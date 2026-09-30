@@ -1,0 +1,84 @@
+{
+  "_source": "trace_fastapi_15588.json, steps[2], smoke test 2026-09-29 (Getting Started notebook, L4x4, budgets 300/50/10/100)",
+  "_transcription": "Hand-transcribed from notebook output (json.dumps indent=1). The original file was not downloaded.",
+  "trace_top_level": {
+    "schema_version": "ATIF-v1.7",
+    "agent": {
+      "name": "adk-eval-core",
+      "version": "1.0"
+    },
+    "keys": [
+      "schema_version",
+      "agent",
+      "steps",
+      "final_metrics"
+    ]
+  },
+  "final_metrics_fastapi_15588": {
+    "total_prompt_tokens": 304907,
+    "total_completion_tokens": 12818,
+    "total_cached_tokens": 0,
+    "total_tokens": 317725,
+    "total_steps": 32
+  },
+  "step_keys": [
+    "extra",
+    "llm_call_count",
+    "message",
+    "metrics",
+    "model_name",
+    "observation",
+    "source",
+    "step_id",
+    "tool_calls"
+  ],
+  "tool_call_keys": [
+    "arguments",
+    "extra",
+    "function_name",
+    "tool_call_id"
+  ],
+  "step": {
+    "step_id": 3,
+    "source": "agent",
+    "message": "The user wants to validate Server Sent Event (SSE) fields in FastAPI to prevent sending broken data (specifically multi-line content in `id` or `event` fields).\n\nI need to find where SSE is handled in FastAPI. I'll start by searching for \"EventSource\" or \"SSE\" or \"server sent events\" in the codebase.",
+    "model_name": "main_lora",
+    "tool_calls": [
+      {
+        "tool_call_id": "call_3",
+        "function_name": "search_similar_code",
+        "arguments": {
+          "query": "Server Sent Events"
+        },
+        "extra": {
+          "elapsed_s": 25.080206632614136,
+          "timestamp": 1790615339.4509492,
+          "author": "swe_baseline_agent",
+          "model_version": "main_lora"
+        }
+      }
+    ],
+    "observation": {
+      "content": "{\"status\": \"ok\", \"query\": \"Server Sent Events\", \"results\": [], \"count\": 0}",
+      "extra": {
+        "tool_name": "search_similar_code",
+        "elapsed_s": 26.362404823303223,
+        "timestamp": 1790615340.7331474,
+        "author": "swe_baseline_agent"
+      }
+    },
+    "metrics": {
+      "prompt_tokens": 5444,
+      "completion_tokens": 95,
+      "cached_tokens": 0,
+      "total_tokens": 5539
+    },
+    "llm_call_count": 1,
+    "extra": {
+      "event_type": "thinking",
+      "elapsed_s": 25.080206632614136,
+      "timestamp": 1790615339.4509492,
+      "author": "swe_baseline_agent"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+# Competition data must not be published (rules 2.4.b: no redistribution to non-participants)
+data/
+*.tgz
+*.npz
+
+# Python / env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Local outputs
+results/
