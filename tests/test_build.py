@@ -69,6 +69,7 @@ def test_build_writes_all_artifacts(data_dir, tmp_path):
     assert dist["distances"] == {"pkg.mod.caller": 1, "pkg.mod.target": 0}
     (row,) = _summary(out / "summary.csv")
     assert row["error"] == "" and row["n_target_nodes"] == "1" and row["graph_file"] == "pkg_abc.json"
+    assert _jsonl(out / "files.jsonl") == [{"instance_id": "pkg_1", "files": ["src/pkg/mod.py"]}]
 
 
 def test_failing_task_is_recorded_and_run_continues(data_dir, tmp_path):
@@ -87,8 +88,10 @@ DATA = Path(__file__).parent.parent / "data"
 def test_build_on_dev_task(tmp_path):
     out = tmp_path / "out"
     assert main(["--data", str(DATA), "--task", "rich_3944", "--out", str(out)]) == 0
-    for name in ("targets.jsonl", "spans.jsonl", "distances.jsonl"):
+    for name in ("targets.jsonl", "spans.jsonl", "distances.jsonl", "files.jsonl"):
         assert len(_jsonl(out / name)) == 1
     (row,) = _summary(out / "summary.csv")
     assert row["cap"] == "13" and row["span_coverage"] == "1.0"
     assert _jsonl(out / "distances.jsonl")[0]["distances"]["rich.cells.get_character_cell_size"] == 0
+    files = _jsonl(out / "files.jsonl")[0]["files"]
+    assert "rich/cells.py" in files and not any(f.startswith("./") for f in files)

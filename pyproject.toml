@@ -6,11 +6,12 @@ build-backend = "setuptools.build_meta"
 name = "navalign"
 version = "0.1.0"
 description = "Navigation-alignment scoring for coding-agent traces"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = ["networkx>=3.4", "unidiff>=0.7", "pandas>=2.1", "numpy>=1.26"]
 
 [project.optional-dependencies]
 test = ["pytest>=8.0"]
+analysis = ["matplotlib>=3.8"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

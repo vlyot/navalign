@@ -49,7 +49,7 @@ def load_done(results_path: Path, retry_errors: bool = True) -> set[str]:
     return {r["instance_id"] for r in read_results(results_path) if not (retry_errors and r.get("error"))}
 
 
-def _as_dict(result: Any) -> dict:
+def as_dict(result: Any) -> dict:
     if isinstance(result, dict):
         return result
     if hasattr(result, "model_dump"):
@@ -65,7 +65,7 @@ def result_record(instance_id: str, result: Any, started: float, finished: float
     `tool_calls` is stored as a count (the trace holds the calls themselves). Fields other than
     the known ones go under `extra`, so nothing the harness returns is lost.
     """
-    fields = _as_dict(result)
+    fields = as_dict(result)
     calls = fields.get("tool_calls")
     row = {"instance_id": instance_id} | {k: fields.get(k) for k in RESULT_FIELDS}
     row["tool_calls"] = len(calls) if isinstance(calls, (list, tuple)) else calls
@@ -90,7 +90,7 @@ def write_manifest(out_dir: Path, config: dict) -> Path:
     return path
 
 
-def _append(f, row: dict) -> None:
+def append_row(f, row: dict) -> None:
     f.write(json.dumps(row, default=str) + "\n")
     f.flush()
     os.fsync(f.fileno())
@@ -121,7 +121,7 @@ def collect_run(tasks: dict[str, Any], ids: list[str], run_one: Callable[[Any], 
                 else:
                     row = result_record(tid, result, started, time.time())
                 row["trace_found"] = (trace_dir / f"trace_{tid}.json").exists()
-            _append(f, row)
+            append_row(f, row)
             rows.append(row)
             status = row["error"] or f"resolved={row['resolved']} calls={row['tool_calls']}"
             print(f"[{n}/{len(ids)}] {tid}: {status} ({time.time() - started:.0f}s)", file=sys.stderr)

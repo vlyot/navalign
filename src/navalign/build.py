@@ -5,6 +5,8 @@ Writes to `--out`:
 - `targets.jsonl`    mapper output per task (target files, nodes, rule per changed line)
 - `spans.jsonl`      node → (file, start, end) index per task
 - `distances.jsonl`  distance from each reachable node to the nearest target, with the cap
+- `files.jsonl`      every file in the snapshot, so the explored-set window can tell real files
+                     from the agent's scratch files without the snapshots
 - `summary.csv`      one row per task, including any error
 
 Rows are written as each task finishes, so an interrupted run keeps what it has done.
@@ -19,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-from .data import graph_path, load_graph, load_tasks
+from .data import graph_path, load_graph, load_tasks, snapshot_files
 from .distance import DistanceMap, distance_map, graph_cap, undirected_calls
 from .mapper import TaskTargets, map_task
 from .spans import SpanIndex, build_span_index
@@ -92,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     with (open(out / "targets.jsonl", "w", encoding="utf-8") as f_targets,
           open(out / "spans.jsonl", "w", encoding="utf-8") as f_spans,
           open(out / "distances.jsonl", "w", encoding="utf-8") as f_dist,
+          open(out / "files.jsonl", "w", encoding="utf-8") as f_files,
           open(out / "summary.csv", "w", encoding="utf-8", newline="") as f_summary):
         summary = csv.DictWriter(f_summary, fieldnames=SUMMARY_FIELDS)
         summary.writeheader()
@@ -104,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
                 if snapshot is None:
                     raise FileNotFoundError(f"no snapshot for {tid} in {snapshots_dir}")
                 targets, spans, distances = build_task(tasks[tid], graphs_dir, snapshot, cap_cache)
+                files = snapshot_files(snapshot)
             except Exception as exc:  # one broken task must not stop a 129-task run
                 failures += 1
                 row = {"instance_id": tid, "error": f"{type(exc).__name__}: {exc}"}
@@ -111,10 +115,11 @@ def main(argv: list[str] | None = None) -> int:
                 f_targets.write(json.dumps(targets.to_dict()) + "\n")
                 f_spans.write(json.dumps(spans.to_dict()) + "\n")
                 f_dist.write(json.dumps(distances.to_dict()) + "\n")
+                f_files.write(json.dumps({"instance_id": tid, "files": files}) + "\n")
                 row = _summary_row(targets, spans, distances) | {"error": ""}
             row["seconds"] = round(time.perf_counter() - start, 1)
             summary.writerow(row)
-            for f in (f_targets, f_spans, f_dist, f_summary):
+            for f in (f_targets, f_spans, f_dist, f_files, f_summary):
                 f.flush()
             status = row["error"] or "ok"
             print(f"[{n}/{len(ids)}] {tid}: {status} ({row['seconds']}s)", file=sys.stderr)

@@ -13,13 +13,18 @@ from networkx.readwrite import json_graph
 
 def load_tasks(path: str | Path) -> dict[str, dict]:
     """Read tasks.jsonl into a dict keyed by instance_id."""
-    tasks = {}
+    return load_jsonl(path)
+
+
+def load_jsonl(path: str | Path, key: str = "instance_id") -> dict[str, dict]:
+    """Read a JSON-lines file into a dict keyed by `key` (later rows win)."""
+    rows = {}
     with open(path, encoding="utf-8") as f:
         for line in f:
             if line.strip():
-                task = json.loads(line)
-                tasks[task["instance_id"]] = task
-    return tasks
+                row = json.loads(line)
+                rows[row[key]] = row
+    return rows
 
 
 def graph_path(graphs_dir: str | Path, task: dict) -> Path:
@@ -61,6 +66,15 @@ def read_snapshot_files(snapshot: str | Path, paths: set[str] | list[str]) -> di
                 if len(found) == len(wanted):
                     break
     return found
+
+
+def snapshot_files(snapshot: str | Path) -> list[str]:
+    """Every file in a `.tgz` snapshot or a directory, as sorted repo-relative POSIX paths."""
+    snapshot = Path(snapshot)
+    if snapshot.is_dir():
+        return sorted(f.relative_to(snapshot).as_posix() for f in snapshot.rglob("*") if f.is_file())
+    with tarfile.open(snapshot, "r:gz") as tf:
+        return sorted(m.name.removeprefix("./") for m in tf if m.isfile())
 
 
 def iter_python_files(snapshot: str | Path) -> Iterator[tuple[str, str]]:

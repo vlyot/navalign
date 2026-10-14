@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from navalign.collect import collect_run, write_manifest
-from navalign.runs import check_run, load_run, main, summarize_run
+from navalign.runs import check_run, load_run, load_runs, main, summarize_run
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "trace_step_example.json"
 FAR = time.time() + 3600
@@ -144,3 +144,55 @@ def test_run_with_no_results_reports_every_task(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "0/0 tasks ran" in captured.out
     assert "PROBLEM rich_1: no result row" in captured.err
+
+
+def _shards(tmp_path, ids_per_shard: list[list[str]], run_id: str = "run1") -> list:
+    """One run directory per shard, each holding only its own tasks (as `select_tasks` splits them)."""
+    dirs = []
+    for k, ids in enumerate(ids_per_shard):
+        out = tmp_path / f"shard{k}"
+        write_manifest(out, {"run_id": run_id, "shard": k, "task_ids": ids})
+        collect_run({t: {"instance_id": t} for t in ids}, ids, fake_agent(out), out, FAR, 60)
+        dirs.append(out)
+    return dirs
+
+
+def test_load_runs_merges_shards(tmp_path):
+    run = load_runs(_shards(tmp_path, [["fastapi_1"], ["rich_1"]]))
+    assert run.manifest["run_id"] == "run1" and run.manifest["task_ids"] == ["fastapi_1", "rich_1"]
+    assert sorted(run.latest) == ["fastapi_1", "rich_1"]
+    assert run.trace("rich_1") is not None
+    assert check_run(run) == []
+
+
+def test_load_runs_flags_tasks_no_shard_covered(tmp_path):
+    dirs = _shards(tmp_path, [["fastapi_1"], ["rich_1"]])
+    manifest = dirs[1] / "manifest.json"
+    manifest.write_text(manifest.read_text(encoding="utf-8").replace('"rich_1"', '"rich_1", "rich_9"'), encoding="utf-8")
+    assert check_run(load_runs(dirs)) == ["rich_9: no result row"]
+
+
+def test_load_runs_flags_a_task_completed_in_two_shards(tmp_path):
+    dirs = _shards(tmp_path, [["rich_1"], ["rich_1"]])
+    assert check_run(load_runs(dirs)) == ["rich_1: 2 completed rows"]
+
+
+def test_cli_accepts_repeated_run(tmp_path, capsys):
+    dirs = _shards(tmp_path, [["fastapi_1"], ["rich_1"]])
+    assert main(["--run", str(dirs[0]), "--run", str(dirs[1])]) == 0
+    assert "run1: 2/2 tasks ran" in capsys.readouterr().out
+
+
+def test_calls_that_never_reached_a_tool_are_not_counted(tmp_path):
+    from test_escaping import call, rejected_edit, write_run
+
+    calls = [
+        call(0, "read_file", {"filepath": "a.py"}, filepath="a.py", content="x"),
+        rejected_edit(1),
+        call(2, "read_file", {"filepath": "a.py"}, status="error", error_type="BudgetExceeded"),
+        call(3, "get_status", {}),
+        call(4, "code_analyzer_agent", {}),
+        call(5, "submit_patch", {}),
+    ]
+    run = load_run(write_run(tmp_path / "run", {"fastapi_1": calls}, reported={"fastapi_1": 1}))
+    assert check_run(run) == []

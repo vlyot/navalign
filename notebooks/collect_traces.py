@@ -14,10 +14,11 @@ import time
 
 T0 = time.time()
 
-RUN_ID = "val1"
-# Validation run: the 5 dev tasks, which have local ground truth. Set to None for a full shard.
-TASK_IDS = ["fastapi_14303", "fastapi_15588", "fastapi_15661", "requests_7427", "rich_3944"]
-SHARD, N_SHARDS = 0, 1          # full collection: 0/2 and 1/2, one Save Version each
+RUN_ID = "run1"
+# None = every task (split by SHARD). val1 used the 5 dev tasks:
+# ["fastapi_14303", "fastapi_15588", "fastapi_15661", "requests_7427", "rich_3944"]
+TASK_IDS = None
+SHARD, N_SHARDS = 0, 3          # run 1: shards 0, 1, 2, one Save Version each (~43 tasks, ~7.5 h, ~15 h quota)
 RESUME_FROM = None              # an earlier version's output attached as input, e.g. "/kaggle/input/<dataset>"
 
 MAX_OUTPUT_TOKENS = 8192        # R2 context fix (was 16384); the thinking budget stays at 4096
