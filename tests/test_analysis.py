@@ -127,6 +127,18 @@ def test_cli_on_run1_writes_the_tables(tmp_path):
     assert len(pd.read_csv(tmp_path / "t4_predictive.csv")) == 24  # 3 outcomes x 8 predictors
 
 
+def test_f1_groups_merge_escaping_failures_into_failed_edits():
+    pytest.importorskip("matplotlib")
+    from navalign.figures import BREAKDOWN, breakdown_counts
+
+    counts = breakdown_counts(_outcomes())
+    assert list(counts.columns) == list(BREAKDOWN)
+    assert list(counts.index) == ["fastapi", "rich", "all"]
+    assert counts.loc["rich", "Edited it, tests failed"] == 1  # rich_5, C1
+    assert counts.loc["all", "Edited it, tests failed"] == 2  # + fastapi_4, C2
+    assert counts.loc["all"].sum() == len(_outcomes())
+
+
 def test_figures_render_and_skip_missing_inputs(tmp_path, capsys):
     pytest.importorskip("matplotlib")
     from navalign.figures import draw_all, pick_cases

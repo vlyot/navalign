@@ -1,8 +1,9 @@
 """Paper figures F1–F4 from the files `navalign.analysis`, `navalign.score` and `navalign.validity`
 write into one output dir. Needs the `analysis` extra (matplotlib).
 
-- F1 `f1_breakdown.png`          failure breakdown per repo (100% stacked bars)
-- F2 `f2_first_read.png`         share of tasks that have read a target file by call k, real vs random
+- F1 `f1_breakdown.png`          failure breakdown per repo (100% stacked bars), in the plain-language groups
+                                 of `BREAKDOWN`
+- F2 `f2_first_read.png`         share of tasks that have read a fix (target) file by call k, agent vs random
                                  (needs `random_k.csv` from `navalign.validity baselines`)
 - F3 `f3_scores_by_outcome.png`  S_file, focus and S_node of the runs that found a target file, by outcome
 - F4 `f4_trajectories.png`       d of every read call in the window for three runs
@@ -35,6 +36,15 @@ GAP = 1.5  # surface gap between touching fills, and the ring around dots
 DOT = 18  # marker area (points²), ~8px across
 OUTCOME_GROUPS = {"B": ("B",), "C": ("C1", "C2"), "D": ("D",), "CD_ng": ("CD_ng",)}
 CASE_CATEGORIES = ("D", "B", "A")
+# F1's legend, for readers who haven't met the category codes; escaping failures (C1) count as failed edits
+BREAKDOWN = {
+    "Never read a fix file": ("A",),
+    "Read it, never edited it": ("B",),
+    "Edited it, tests failed": ("C1", "C2"),
+    "Edited it, tests passed": ("D",),
+    "Edited it, can't be graded": ("CD_ng",),
+    "Stopped by the context limit": ("X",),
+}
 
 
 def _rc() -> dict:
@@ -64,10 +74,17 @@ def _save(fig: Figure, path: Path) -> Path:
     return path
 
 
-def fig_breakdown(outcomes: pd.DataFrame, path: Path) -> Path:
-    counts = pd.crosstab(outcomes["repo"], outcomes["category"]).reindex(columns=list(CATEGORIES), fill_value=0)
+def breakdown_counts(outcomes: pd.DataFrame) -> pd.DataFrame:
+    """Runs per repo (rows, fewest first, then "all") and `BREAKDOWN` group (columns)."""
+    by_category = pd.crosstab(outcomes["repo"], outcomes["category"]).reindex(columns=list(CATEGORIES), fill_value=0)
+    counts = pd.DataFrame({label: by_category[list(categories)].sum(axis=1) for label, categories in BREAKDOWN.items()})
     counts = counts.loc[counts.sum(axis=1).sort_values().index]
     counts.loc["all"] = counts.sum()
+    return counts
+
+
+def fig_breakdown(outcomes: pd.DataFrame, path: Path) -> Path:
+    counts = breakdown_counts(outcomes)
     totals = counts.sum(axis=1)
     shares = counts.div(totals, axis=0)
     with mpl.rc_context(_rc()):
@@ -75,11 +92,10 @@ def fig_breakdown(outcomes: pd.DataFrame, path: Path) -> Path:
         ax = fig.subplots()
         y = np.arange(len(counts))
         left = np.zeros(len(counts))
-        for color, category in zip(SERIES, CATEGORIES, strict=True):
-            width = shares[category].to_numpy()
-            ax.barh(y, width, left=left, height=0.56, color=color, edgecolor=SURFACE, linewidth=GAP,
-                    label=f"{category}: {CATEGORIES[category]}")
-            for yi, (w, n) in enumerate(zip(width, counts[category], strict=True)):
+        for color, label in zip(SERIES, BREAKDOWN, strict=False):
+            width = shares[label].to_numpy()
+            ax.barh(y, width, left=left, height=0.56, color=color, edgecolor=SURFACE, linewidth=GAP, label=label)
+            for yi, (w, n) in enumerate(zip(width, counts[label], strict=True)):
                 if w >= 0.06:  # only where the count fits inside the segment
                     ax.text(left[yi] + w / 2, yi, str(n), ha="center", va="center", fontsize=7.5, color=_label_color(color))
             left += width
@@ -89,8 +105,8 @@ def fig_breakdown(outcomes: pd.DataFrame, path: Path) -> Path:
         ax.xaxis.grid(True)
         ax.set_axisbelow(True)
         ax.spines["left"].set_visible(False)
-        ax.set_title("Where each run ended up, by repository (run 1, 129 tasks)")
-        ax.legend(loc="upper center", bbox_to_anchor=(0.45, -0.14), ncol=4, handlelength=1, columnspacing=1.4)
+        ax.set_title(f"Where each agent run ended up, by repository ({totals['all']} tasks)")
+        ax.legend(loc="upper center", bbox_to_anchor=(0.45, -0.14), ncol=3, handlelength=1, columnspacing=1.4)
         return _save(fig, path)
 
 
@@ -102,7 +118,7 @@ def fig_first_read(outcomes: pd.DataFrame, random_k: pd.DataFrame, path: Path) -
     with mpl.rc_context(_rc()):
         fig = Figure(figsize=(6.4, 3.2))
         ax = fig.subplots()
-        for (name, ks), color in zip({"run 1": real, "random reads": rand}.items(), SERIES, strict=False):
+        for (name, ks), color in zip({"agent": real, "random reads": rand}.items(), SERIES, strict=False):
             share = np.array([(ks <= x).mean() for x in xs])
             ax.step(xs, share, where="post", color=color, linewidth=LINE, label=name)
             never = ks.isna().mean()
@@ -114,8 +130,8 @@ def fig_first_read(outcomes: pd.DataFrame, random_k: pd.DataFrame, path: Path) -
         ax.yaxis.grid(True)
         ax.set_axisbelow(True)
         ax.set_xlabel("call number in the trace (k)")
-        ax.set_ylabel("tasks that have read a target file")
-        ax.set_title(f"First read of a target file (S_file = 1/k), {len(real)} tasks")
+        ax.set_ylabel("tasks that have read a fix file")
+        ax.set_title(f"First read of a fix file, {len(real)} tasks")
         ax.legend(loc="lower right", bbox_to_anchor=(1, 0.08))
         return _save(fig, path)
 
