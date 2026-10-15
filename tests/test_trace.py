@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from navalign.trace import parse_trace
+from navalign.data import example_dir
+from navalign.trace import REDACTED, parse_trace, redact_prompts
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "trace_step_example.json"
 
@@ -40,3 +41,20 @@ def test_results_list_matched_by_call_id():
     }
     trace = parse_trace({"steps": [step]})
     assert [(c.arguments["path"], c.output) for c in trace.calls] == [("x.py", "X"), ("y.py", "Y")]
+
+
+TOY_TRACE = example_dir() / "traces" / "trace_toyshop_1.json"
+
+
+def test_redact_prompts_blanks_only_system_and_user_messages():
+    data = json.loads(TOY_TRACE.read_text(encoding="utf-8"))
+    orphan = {"step_id": 99, "source": "system", "observation": "tool output delivered in a system step"}
+    redacted = redact_prompts(data | {"steps": [*data["steps"], orphan]})
+    assert [s["message"] for s in redacted["steps"][:2]] == [REDACTED, REDACTED]
+    assert redacted["steps"][2:] == [*data["steps"][2:], orphan]
+    assert data["steps"][1]["message"].startswith("Discount codes")  # the input is left alone
+
+
+def test_redact_prompts_leaves_the_parsed_trace_unchanged():
+    data = json.loads(TOY_TRACE.read_text(encoding="utf-8"))
+    assert parse_trace(redact_prompts(data)) == parse_trace(data)

@@ -95,7 +95,7 @@ def edit_failures(trace: Trace, instance_id: str = "") -> list[dict]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="R3: label every failed edit_file in a run.")
+    parser = argparse.ArgumentParser(prog="navalign escaping", description="R3: label every failed edit_file in a run.")
     parser.add_argument("--run", required=True, action="append", help="run directory; repeat for each shard")
     parser.add_argument("--csv", help="write one row per failed edit here")
     args = parser.parse_args(argv)

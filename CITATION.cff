@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use navalign, please cite it as below."
+type: software
+title: "navalign: navigation-alignment scoring for coding-agent traces"
+abstract: >-
+  navalign scores how directly a coding agent's exploration reached the code that the real fix
+  changed. Given a task's code graph, its reference patch and an ATIF trace, it reports
+  file-level (S_file, focus) and node-level (S_node) navigation scores and per-step distances, and
+  breaks each run's outcome into never found / found but not edited / edited but failed / passed.
+authors:
+  - given-names: Kai
+    alias: vlyot
+version: 0.1.0
+license: Apache-2.0
+repository-code: "https://github.com/vlyot/navalign"
+keywords:
+  - coding agents
+  - agent evaluation
+  - code localization
+  - SWE-bench
+  - ATIF

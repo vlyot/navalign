@@ -1,0 +1,2 @@
+# The toy example's patch and trace quote its files line for line
+src/navalign/examples/** text eol=lf

@@ -153,7 +153,7 @@ def predictive_table(outcomes: pd.DataFrame, prefix: int = PREFIX, n_boot: int =
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Outcomes and result tables (T1, T2, T4) for a scored run.")
+    parser = argparse.ArgumentParser(prog="navalign analysis", description="Outcomes and result tables (T1, T2, T4) for a scored run.")
     parser.add_argument("--run", required=True, action="append", help="run directory; repeat for each shard")
     parser.add_argument("--groundtruth", required=True, help="navalign.build output dir")
     parser.add_argument("--grades", required=True, help="dir with the grades.jsonl that holds the run's agent grades")

@@ -197,7 +197,7 @@ def _normalize(name: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Summarise a gold-patch control or an agent regrade.")
+    parser = argparse.ArgumentParser(prog="navalign grade", description="Summarise a gold-patch control or an agent regrade.")
     parser.add_argument("--grades", required=True, action="append", help="dir with grades.jsonl; repeat to combine")
     parser.add_argument("--replicate", action="append", default=[], metavar="DIR[:REPO,...]",
                         help="another control run of the same environment (optionally only for these repos); "

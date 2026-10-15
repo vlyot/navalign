@@ -329,7 +329,7 @@ def summary_row(ex: Exploration, target_files: set[str]) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Explored set and exploration window for every trace of a run.")
+    parser = argparse.ArgumentParser(prog="navalign explore", description="Explored set and exploration window for every trace of a run.")
     parser.add_argument("--run", required=True, action="append", help="run directory; repeat for each shard")
     parser.add_argument("--groundtruth", required=True, help="dir with files.jsonl and targets.jsonl")
     parser.add_argument("--out", help="write one Exploration per task here (JSON lines)")

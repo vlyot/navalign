@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -6,13 +7,17 @@ import pytest
 from test_escaping import write_run
 from test_explore import call, run
 
+from navalign.build import main as build_main
+from navalign.data import example_dir
 from navalign.explore import ReadSpan, explore_trace
 from navalign.score import (
     GroundTruth,
+    describe_score,
     load_groundtruth,
     main,
     read_nodes,
     score_exploration,
+    score_one,
     score_task,
 )
 from navalign.trace import Trace, load_trace
@@ -162,6 +167,57 @@ def test_cli_writes_scores_and_steps(tmp_path, capsys):
     assert (row["instance_id"], row["k"], row["s_file"], row["s_node"]) == (TASK, 2, 0.5, pytest.approx(0.8))
     (line,) = steps.read_text(encoding="utf-8").splitlines()
     assert [s["d"] for s in json.loads(line)["steps"]] == [2, 0]
+
+
+# --- the bundled toy example ----------------------------------------------------------------
+
+TOY = example_dir()
+TOY_TRACE = TOY / "traces" / "trace_toyshop_1.json"
+TOY_RAW = {"tasks": TOY / "tasks.jsonl", "graphs": TOY / "graphs", "snapshots": TOY / "snapshots"}
+
+
+@pytest.fixture
+def toy_groundtruth(tmp_path):
+    assert build_main(["--data", str(TOY), "--out", str(tmp_path / "gt")]) == 0
+    return tmp_path / "gt"
+
+
+def test_score_one_from_groundtruth_equals_raw_data(toy_groundtruth):
+    assert score_one(TOY_TRACE, "toyshop_1", toy_groundtruth) == score_one(TOY_TRACE, "toyshop_1", **TOY_RAW)
+
+
+@pytest.mark.parametrize("source", ["groundtruth", "raw"])
+def test_score_one_names_an_unknown_task(source, toy_groundtruth):
+    kwargs = {"groundtruth": toy_groundtruth} if source == "groundtruth" else TOY_RAW
+    with pytest.raises(KeyError, match="toyshop_9 is not in"):
+        score_one(TOY_TRACE, "toyshop_9", **kwargs)
+
+
+def test_describe_score_names_the_first_target_read_and_s_file():
+    text = describe_score(score_one(TOY_TRACE, "toyshop_1", **TOY_RAW))
+    assert text.startswith("toyshop_1: 9 tool calls; the exploration window is calls 1-6")
+    assert "first read of a fixed file   call 3     S_file 0.333" in text
+    assert "S_node 0.800  (cap 5 hops)" in text
+
+
+def test_describe_score_says_never_when_no_target_file_is_read():
+    text = describe_score(score([read(0, "pkg/b.py"), run(1, "ls")]))
+    assert "first read of a fixed file   never" in text
+    assert "the exploration window is the whole trace" in text
+
+
+def test_describe_score_steps_lists_the_window_calls():
+    lines = describe_score(score_one(TOY_TRACE, "toyshop_1", **TOY_RAW), steps=True).splitlines()
+    assert lines[lines.index("  call  tool         files read          fixed file  fixed code  d") + 4] == \
+        "  4     read_file    toyshop/pricing.py  yes         yes         0"
+
+
+def test_cli_scores_a_plain_trace_folder(tmp_path, toy_groundtruth, capsys):
+    traces = tmp_path / "results" / "traces"
+    traces.mkdir(parents=True)
+    shutil.copy(TOY_TRACE, traces)
+    assert main(["--run", str(tmp_path / "results"), "--groundtruth", str(toy_groundtruth)]) == 0
+    assert "1 tasks: S_file mean 0.333 over 1" in capsys.readouterr().out
 
 
 # --- real traces (git-ignored; skipped when absent) ---------------------------------------

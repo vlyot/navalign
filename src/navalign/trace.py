@@ -6,6 +6,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+REDACTED = "[removed]"
+
 
 @dataclass
 class ToolCall:
@@ -77,3 +79,12 @@ def parse_trace(data: dict) -> Trace:
 def load_trace(path: str | Path) -> Trace:
     with open(path, encoding="utf-8") as f:
         return parse_trace(json.load(f))
+
+
+def redact_prompts(data: dict) -> dict:
+    """A copy of a trace whose system and user messages (the harness's instructions and the task text) read
+    "[removed]", for publishing it. Tool calls, observations and step ids are kept, so its scores don't change."""
+    return data | {"steps": [
+        step | {"message": REDACTED} if step.get("source") in ("system", "user") and "message" in step else step
+        for step in data.get("steps") or []
+    ]}

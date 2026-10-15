@@ -5,10 +5,16 @@ from __future__ import annotations
 import json
 import tarfile
 from collections.abc import Iterator
+from importlib import resources
 from pathlib import Path
 
 import networkx as nx
 from networkx.readwrite import json_graph
+
+
+def example_dir() -> Path:
+    """The bundled toy example, laid out like the competition data: tasks.jsonl, graphs/, snapshots/, traces/."""
+    return Path(str(resources.files("navalign") / "examples" / "toy"))
 
 
 def load_tasks(path: str | Path) -> dict[str, dict]:

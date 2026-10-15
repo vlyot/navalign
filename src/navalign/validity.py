@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     common.add_argument("--run", required=True, action="append", help="run directory; repeat for each shard")
     common.add_argument("--groundtruth", required=True, help="navalign.build output dir")
     common.add_argument("--seed", type=int, default=0)
-    parser = argparse.ArgumentParser(description="Checkpoint 2 validity checks for the navigation score.")
+    parser = argparse.ArgumentParser(prog="navalign validity", description="Checkpoint 2 validity checks for the navigation score.")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("baselines", parents=[common], help="oracle and random baselines")
     p.add_argument("--out", required=True, help="writes baselines.csv, validity.csv, random_k.csv")

@@ -72,7 +72,7 @@ def _summary_row(targets: TaskTargets, spans: SpanIndex, distances: DistanceMap)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build target maps, node span indexes and distance maps.")
+    parser = argparse.ArgumentParser(prog="navalign build", description="Build target maps, node span indexes and distance maps.")
     parser.add_argument("--data", default="data", help="dir with tasks.jsonl, graphs/, snapshots/")
     parser.add_argument("--tasks", help="tasks.jsonl (default: <data>/tasks.jsonl)")
     parser.add_argument("--graphs", help="graph dir (default: <data>/graphs)")

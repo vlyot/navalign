@@ -1,7 +1,8 @@
 """Load, check and summarise a trace-collection run downloaded from Kaggle.
 
 A run directory is what `navalign.collect` and the harness write: `manifest.json`,
-`results.jsonl`, and `trace_<id>.json` / `<id>.log` files anywhere below it.
+`results.jsonl`, and `trace_<id>.json` / `<id>.log` files anywhere below it. A folder with
+traces but no `results.jsonl` (the harness's own `results/traces/`) is a run of every trace in it.
 
     python -m navalign.runs --run results/traces/val1 [--csv summary.csv]
 
@@ -71,11 +72,13 @@ def load_run(run_dir: str | Path) -> Run:
     run_dir = Path(run_dir)
     manifest_path = run_dir / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    results = run_dir / "results.jsonl"
+    trace_paths = {p.stem.removeprefix("trace_"): p for p in sorted(run_dir.rglob("trace_*.json"))}
     return Run(
         run_dir=run_dir,
         manifest=manifest,
-        rows=read_results(run_dir / "results.jsonl"),
-        trace_paths={p.stem.removeprefix("trace_"): p for p in sorted(run_dir.rglob("trace_*.json"))},
+        rows=read_results(results) if results.exists() else [{"instance_id": tid} for tid in trace_paths],
+        trace_paths=trace_paths,
         log_paths={p.stem: p for p in sorted(run_dir.rglob("*.log"))},
     )
 
@@ -121,7 +124,7 @@ def check_run(run: Run) -> list[str]:
             problems.append(f"{tid}: no trace file")
         else:
             counted = sum(c.name not in UNCOUNTED_TOOLS and reached_tool(c) for c in trace.calls)
-            if row.get("tool_calls") != counted:
+            if "tool_calls" in row and row["tool_calls"] != counted:
                 problems.append(f"{tid}: result has {row.get('tool_calls')} tool calls, trace has {counted}")
     return problems
 
@@ -157,7 +160,7 @@ def summarize_run(run: Run) -> pd.DataFrame:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Check and summarise a downloaded trace-collection run.")
+    parser = argparse.ArgumentParser(prog="navalign runs", description="Check and summarise a downloaded trace-collection run.")
     parser.add_argument("--run", required=True, action="append",
                         help="run directory (manifest.json, results.jsonl, traces); repeat for each shard")
     parser.add_argument("--csv", help="also write the per-task summary here")

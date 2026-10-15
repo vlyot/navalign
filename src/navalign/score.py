@@ -21,6 +21,8 @@ are not navigation of the codebase and count toward neither focus nor S_node. Ta
 targets are new files get no file-level score; `created_target` says whether the agent wrote one.
 
     python -m navalign.score --run DIR [--run DIR] --groundtruth DIR [--out scores.csv] [--steps steps.jsonl]
+    navalign score-trace TRACE (--groundtruth DIR | --data DIR) [--task ID] [--steps] [--json]
+    navalign score-trace --demo
 """
 
 from __future__ import annotations
@@ -34,18 +36,20 @@ from pathlib import Path
 
 import pandas as pd
 
-from .build import build_task
-from .data import load_jsonl, snapshot_files
+from .build import build_task, snapshot_path
+from .data import example_dir, load_jsonl, load_tasks, snapshot_files
 from .distance import DistanceMap
 from .explore import Exploration, ReadSpan, explore_trace
 from .mapper import NODE_RULES
 from .runs import Run, load_runs
 from .spans import SpanIndex
-from .trace import Trace
+from .trace import Trace, load_trace
 
 GROUND_TRUTH = ("targets", "spans", "distances", "files")
 COUNT_COLUMNS = ("k", "k_node", "k_seen", "cap")
 PREFIX_COLUMNS = ("s_file_prefix", "focus_prefix", "s_node_prefix")
+DEMO_TASK = "toyshop_1"
+METHODOLOGY = "https://github.com/vlyot/navalign/blob/main/docs/methodology.md"
 
 
 @dataclass
@@ -204,6 +208,100 @@ def score_task(task: dict, graphs_dir: str | Path, snapshot: str | Path, trace: 
     return score_exploration(explore_trace(trace, gt.snapshot_files, gt.target_files, task["instance_id"]), gt)
 
 
+def score_one(trace: str | Path, task_id: str, groundtruth: str | Path | None = None, tasks: str | Path | None = None,
+              graphs: str | Path | None = None, snapshots: str | Path | None = None) -> TaskScore:
+    """Score one trace file against prebuilt ground truth, or against ground truth built from the task's
+    `tasks` file, graph dir and snapshot dir."""
+    if groundtruth is not None:
+        gt = load_groundtruth(groundtruth, [task_id]).get(task_id)
+        if gt is None:
+            raise KeyError(f"{task_id} is not in the ground truth in {groundtruth}")
+        return score_exploration(explore_trace(load_trace(trace), gt.snapshot_files, gt.target_files, task_id), gt)
+    task = load_tasks(tasks).get(task_id)
+    if task is None:
+        raise KeyError(f"{task_id} is not in {tasks}")
+    snapshot = snapshot_path(Path(snapshots), task_id)
+    if snapshot is None:
+        raise FileNotFoundError(f"no snapshot of {task_id} in {snapshots}")
+    return score_task(task, graphs, snapshot, load_trace(trace))
+
+
+def _at_call(k: int | None) -> str:
+    return f"call {k}" if k else "never"
+
+
+def describe_score(score: TaskScore, steps: bool = False) -> str:
+    """Plain-English summary of one task's scores; `steps` adds a row per call in the exploration window."""
+    if score.window_end == score.n_calls:
+        window = "no call edits a repo file, so the exploration window is the whole trace"
+    else:
+        window = f"the exploration window is calls 1-{score.window_end}, before the first edit of a repo file"
+    reads = [s for s in score.steps if s.files]
+    rows = []
+    if score.s_file is None:
+        rows.append(("fixed files", "the fix only adds new files; the agent " +
+                     ("created one" if score.created_target else "created none"), ""))
+    else:
+        rows.append(("first read of a fixed file", _at_call(score.k), f"S_file {score.s_file:.3f}"))
+        rows.append(("reads that hit a fixed file", f"{sum(s.target_file for s in reads)} of {len(reads)}",
+                     "" if score.focus is None else f"focus  {score.focus:.3f}"))
+    if score.cap is None:
+        rows.append(("fixed code", "no fixed function or class is in the graph", ""))
+    else:
+        rows.append(("first read of fixed code", _at_call(score.k_node), ""))
+        rows.append(("mean distance of reads", "no reads" if score.mean_d is None else f"{score.mean_d:.2f} hops",
+                     "" if score.s_node is None else f"S_node {score.s_node:.3f}  (cap {score.cap} hops)"))
+    rows.append(("first sight of the fix", _at_call(score.k_seen), "(search results or reads)"))
+    widths = [max(len(r[i]) for r in rows) for i in (0, 1)]
+    out = [f"{score.instance_id}: {score.n_calls} tool calls; {window}", ""]
+    out += [f"  {a:<{widths[0]}}  {b:<{widths[1]}}  {c}".rstrip() for a, b, c in rows]
+    if steps:
+        table = [("call", "tool", "files read", "fixed file", "fixed code", "d")] + [
+            (str(s.index + 1), s.tool, ", ".join(s.files) or "-", "yes" if s.target_file else "",
+             "yes" if s.target_node else "", "" if s.d is None else str(s.d)) for s in score.steps]
+        widths = [max(len(r[i]) for r in table) for i in range(6)]
+        out += [""] + [("  " + "  ".join(f"{v:<{w}}" for v, w in zip(r, widths, strict=True))).rstrip() for r in table]
+    out += ["", "S_file = 1/k for the first read of a fixed file; focus = share of reads that hit one;",
+            f"S_node = 1 - mean hops/cap (1: every read showed fixed code). Definitions: {METHODOLOGY}"]
+    return "\n".join(out)
+
+
+def trace_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="navalign score-trace", description="Navigation scores for one agent trace.")
+    parser.add_argument("trace", nargs="?", help="ATIF trace file, e.g. trace_<instance_id>.json")
+    parser.add_argument("--demo", action="store_true", help="score the bundled toy example")
+    parser.add_argument("--task", help="instance_id (default: from the trace file name)")
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--groundtruth", help="prebuilt ground truth: `navalign build` output or the navalign-groundtruth Dataset")
+    source.add_argument("--data", help="dir with tasks.jsonl, graphs/ and snapshots/, to build the ground truth on the fly")
+    parser.add_argument("--tasks", help="tasks.jsonl (default: <data>/tasks.jsonl)")
+    parser.add_argument("--graphs", help="graph dir (default: <data>/graphs)")
+    parser.add_argument("--snapshots", help="snapshot dir (default: <data>/snapshots)")
+    parser.add_argument("--steps", action="store_true", help="also list every call in the exploration window")
+    parser.add_argument("--json", action="store_true", help="print the scores and steps as JSON")
+    args = parser.parse_args(argv)
+
+    if args.demo:
+        if args.trace or args.groundtruth or args.data:
+            parser.error("--demo takes no trace, --groundtruth or --data")
+        args.data = example_dir()
+        args.trace = args.data / "traces" / f"trace_{DEMO_TASK}.json"
+    data = Path(args.data) if args.data else None
+    raw = {name: getattr(args, name) or (data / default if data else None)
+           for name, default in (("tasks", "tasks.jsonl"), ("graphs", "graphs"), ("snapshots", "snapshots"))}
+    if not args.trace or not (args.groundtruth or None not in raw.values()):
+        parser.error("give a trace and either --groundtruth DIR or --data DIR (or try --demo)")
+    task_id = args.task or Path(args.trace).stem.removeprefix("trace_")
+    try:
+        score = score_one(args.trace, task_id, args.groundtruth, **raw)
+    except KeyError as exc:
+        parser.error(exc.args[0] + ("" if args.task else "; if the file isn't trace_<instance_id>.json, give the id with --task"))
+    except FileNotFoundError as exc:
+        parser.error(str(exc))
+    print(json.dumps(asdict(score), indent=2) if args.json else describe_score(score, args.steps))
+    return 0
+
+
 def scores_table(scores: Iterable[TaskScore]) -> pd.DataFrame:
     table = pd.DataFrame([s.row() for s in scores], columns=[f for f in TaskScore.__dataclass_fields__ if f != "steps"])
     for col in COUNT_COLUMNS:
@@ -212,7 +310,7 @@ def scores_table(scores: Iterable[TaskScore]) -> pd.DataFrame:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="File- and node-level navigation scores for every trace of a run.")
+    parser = argparse.ArgumentParser(prog="navalign score", description="File- and node-level navigation scores for every trace of a run.")
     parser.add_argument("--run", required=True, action="append", help="run directory; repeat for each shard")
     parser.add_argument("--groundtruth", required=True, help="navalign.build output dir")
     parser.add_argument("--out", help="write the per-task scores here (CSV)")

@@ -1,0 +1,164 @@
+{
+ "directed": true,
+ "multigraph": true,
+ "graph": {
+  "repo_name": "toyshop_0123456789abcdef0123456789abcdef01234567"
+ },
+ "nodes": [
+  {
+   "name": "toyshop.cart.Cart",
+   "text": "class Cart:\n    def __init__(self):\n        self.items = []\n\n    def add(self, name, price, qty=1):\n        self.items.append((name, price, qty))\n\n    def subtotal(self):\n        return sum(price * qty for _, price, qty in self.items)\n\n    def total(self, code=None):\n        return apply_discount(self.subtotal(), code)",
+   "id": "toyshop.cart.Cart"
+  },
+  {
+   "name": "toyshop.cart.Cart.__init__",
+   "text": "def __init__(self):\n        self.items = []",
+   "id": "toyshop.cart.Cart.__init__"
+  },
+  {
+   "name": "toyshop.cart.Cart.add",
+   "text": "def add(self, name, price, qty=1):\n        self.items.append((name, price, qty))",
+   "id": "toyshop.cart.Cart.add"
+  },
+  {
+   "name": "toyshop.cart.Cart.subtotal",
+   "text": "def subtotal(self):\n        return sum(price * qty for _, price, qty in self.items)",
+   "id": "toyshop.cart.Cart.subtotal"
+  },
+  {
+   "name": "toyshop.cart.Cart.total",
+   "text": "def total(self, code=None):\n        return apply_discount(self.subtotal(), code)",
+   "id": "toyshop.cart.Cart.total"
+  },
+  {
+   "name": "toyshop.pricing.round_price",
+   "text": "def round_price(amount):\n    return round(amount, 2)",
+   "id": "toyshop.pricing.round_price"
+  },
+  {
+   "name": "toyshop.pricing.apply_discount",
+   "text": "def apply_discount(amount, code=None):\n    if code is None:\n        return round_price(amount)\n    rate = DISCOUNTS[code]\n    return round_price(amount * rate)",
+   "id": "toyshop.pricing.apply_discount"
+  },
+  {
+   "name": "toyshop.receipt.format_line",
+   "text": "def format_line(name, price, qty):\n    return f\"{qty} x {name:<12} {price * qty:>8.2f}\"",
+   "id": "toyshop.receipt.format_line"
+  },
+  {
+   "name": "toyshop.receipt.render",
+   "text": "def render(cart: Cart, code=None):\n    lines = [format_line(*item) for item in cart.items]\n    lines.append(f\"{'TOTAL':<16} {cart.total(code):>8.2f}\")\n    return \"\\n\".join(lines)",
+   "id": "toyshop.receipt.render"
+  }
+ ],
+ "edges": [
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart",
+   "target": "toyshop.cart.Cart.__init__",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart.__init__",
+   "target": "toyshop.cart.Cart",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart",
+   "target": "toyshop.cart.Cart.add",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart.add",
+   "target": "toyshop.cart.Cart",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart",
+   "target": "toyshop.cart.Cart.subtotal",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart.subtotal",
+   "target": "toyshop.cart.Cart",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart",
+   "target": "toyshop.cart.Cart.total",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart.total",
+   "target": "toyshop.cart.Cart",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart.total",
+   "target": "toyshop.cart.Cart.subtotal",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart.subtotal",
+   "target": "toyshop.cart.Cart.total",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart.total",
+   "target": "toyshop.pricing.apply_discount",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.pricing.apply_discount",
+   "target": "toyshop.cart.Cart.total",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.pricing.apply_discount",
+   "target": "toyshop.pricing.round_price",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.pricing.round_price",
+   "target": "toyshop.pricing.apply_discount",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.receipt.render",
+   "target": "toyshop.receipt.format_line",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.receipt.format_line",
+   "target": "toyshop.receipt.render",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.receipt.render",
+   "target": "toyshop.cart.Cart.total",
+   "key": 0
+  },
+  {
+   "type": "calls",
+   "source": "toyshop.cart.Cart.total",
+   "target": "toyshop.receipt.render",
+   "key": 0
+  }
+ ]
+}

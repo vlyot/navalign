@@ -166,7 +166,7 @@ def map_task(task: dict, graph: nx.Graph, snapshot: str | Path) -> TaskTargets:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Map reference patches to target files and graph nodes.")
+    parser = argparse.ArgumentParser(prog="navalign mapper", description="Map reference patches to target files and graph nodes.")
     parser.add_argument("--data", default="data", help="dir with tasks.jsonl, graphs/, snapshots/")
     parser.add_argument("--task", action="append", help="instance_id (repeatable); default: every task with a snapshot")
     parser.add_argument("--out", help="write JSON lines here instead of stdout")

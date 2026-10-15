@@ -183,6 +183,21 @@ def test_cli_accepts_repeated_run(tmp_path, capsys):
     assert "run1: 2/2 tasks ran" in capsys.readouterr().out
 
 
+def test_folder_of_traces_without_results_is_a_run_of_every_trace(tmp_path):
+    out = tmp_path / "results" / "traces"
+    out.mkdir(parents=True)
+    for tid, names in CALLS.items():
+        (out / f"trace_{tid}.json").write_text(json.dumps(_trace(names)), encoding="utf-8")
+    run = load_run(tmp_path / "results")
+    assert run.latest == {"fastapi_1": {"instance_id": "fastapi_1"}, "rich_1": {"instance_id": "rich_1"}}
+    assert [c.name for c in run.trace("rich_1").calls] == CALLS["rich_1"]
+
+
+def test_trace_only_rows_skip_the_call_count_check(tmp_path):
+    (tmp_path / "trace_rich_1.json").write_text(json.dumps(_trace(CALLS["rich_1"])), encoding="utf-8")
+    assert check_run(load_run(tmp_path)) == []
+
+
 def test_calls_that_never_reached_a_tool_are_not_counted(tmp_path):
     from test_escaping import call, rejected_edit, write_run
 
