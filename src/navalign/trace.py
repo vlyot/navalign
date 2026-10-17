@@ -81,10 +81,9 @@ def load_trace(path: str | Path) -> Trace:
         return parse_trace(json.load(f))
 
 
-def redact_prompts(data: dict) -> dict:
-    """A copy of a trace whose system and user messages (the harness's instructions and the task text) read
-    "[removed]", for publishing it. Tool calls, observations and step ids are kept, so its scores don't change."""
-    return data | {"steps": [
-        step | {"message": REDACTED} if step.get("source") in ("system", "user") and "message" in step else step
-        for step in data.get("steps") or []
-    ]}
+def redact_messages(data: dict) -> dict:
+    """A copy of a trace whose step messages (the harness's instructions, the task text, and the model's own
+    words, which quote both) read "[removed]", for publishing it. Tool calls, their arguments and observations
+    and the step ids are kept, so every score and escaping label is unchanged."""
+    return data | {"steps": [step | {"message": REDACTED} if "message" in step else step
+                             for step in data.get("steps") or []]}

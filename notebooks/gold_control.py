@@ -49,20 +49,23 @@ T0 = time.time()
 
 ENV = "shipped"           # "shipped": the harness as is | "repaired": the R1 repairs below | "hosts": a host-fixed setup
 VARIANT = "reference"     # "reference": gold and empty patch | "agent": the patches of the runs in RUNS | "all": both
-# Run 1's shard results (manifest.json + results.jsonl per shard) from the private dataset kaic87/navalign-run1-results.
-RUNS = sorted(str(p.parent) for p in Path("/kaggle/input").rglob("manifest.json") if "navalign-run1-results" in str(p))
+# A run's shard results (manifest.json + results.jsonl per shard), from a private dataset:
+# kaic87/navalign-run1-results (3 shards) or kaic87/navalign-run2-results (1 shard).
+RESULTS_DATASET, N_RUN_SHARDS = "navalign-run1-results", 3
+RUNS = sorted(str(p.parent) for p in Path("/kaggle/input").rglob("manifest.json") if RESULTS_DATASET in str(p))
 TASK_IDS = None           # None = all tasks
 RESUME_FROM = None        # an earlier version of this notebook attached as input, e.g. "/kaggle/input/<dataset>"
 TIMEOUT_S = 300           # per test run, as in the trace runs
 KERNEL_LIMIT_S, SAVE_MARGIN_S, MAX_PAIR_S = 12 * 3600, 30 * 60, 15 * 60
 
-# Run 1's traces come from swegemma 0.2.7 (wheelhouse v28). Later versions (0.2.10+, wheelhouse v29+)
+# Runs 1 and 2 come from swegemma 0.2.7 (wheelhouse v28). Later versions (0.2.10+, wheelhouse v29+)
 # change how agent patches are applied in the test step, so grading must use the same version.
 # The wheelhouse input has to be pinned to Version 28 in the notebook's input settings.
 EXPECTED_SWEGEMMA = "0.2.7"
 assert importlib.metadata.version("swegemma") == EXPECTED_SWEGEMMA, (
     f"swegemma {importlib.metadata.version('swegemma')} installed; pin the wheelhouse input to Version 28")
-assert VARIANT == "reference" or len(RUNS) == 3, f"expected 3 shard dirs from navalign-run1-results, found {RUNS}"
+assert VARIANT == "reference" or len(RUNS) == N_RUN_SHARDS, (
+    f"expected {N_RUN_SHARDS} shard dirs from {RESULTS_DATASET}, found {RUNS}")
 
 # Kaggle allows no Internet in notebooks attached to this competition, so the repairs install from
 # the private dataset kaic87/navalign-repair-wheels (built by notebooks/build_repair_wheels.sh).

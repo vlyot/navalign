@@ -14,15 +14,17 @@ import time
 
 T0 = time.time()
 
-RUN_ID = "run1"
+RUN_ID = "run2"
 # None = every task (split by SHARD). val1 used the 5 dev tasks:
 # ["fastapi_14303", "fastapi_15588", "fastapi_15661", "requests_7427", "rich_3944"]
 TASK_IDS = None
-SHARD, N_SHARDS = 0, 3          # run 1: shards 0, 1, 2, one Save Version each (~43 tasks, ~7.5 h, ~15 h quota)
+SHARD, N_SHARDS = 0, 1          # run 1: shards 0-2 of 3 (~43 tasks, ~7.5 h each); run 2: one Save Version (~7 h)
 RESUME_FROM = None              # an earlier version's output attached as input, e.g. "/kaggle/input/<dataset>"
 
 MAX_OUTPUT_TOKENS = 8192        # R2 context fix (was 16384); the thinking budget stays at 4096
-BUDGETS = {"timeout_seconds": 300, "max_tool_calls": 50, "max_time_minutes": 10, "max_turns": 100}
+# Run 2 changes only max_tool_calls (run 1: 50) to the shipped default of 10; the shipped 1-minute and
+# 60-second limits would end most runs on time instead, so the time budgets stay as in run 1.
+BUDGETS = {"timeout_seconds": 300, "max_tool_calls": 10, "max_time_minutes": 10, "max_turns": 100}
 
 KERNEL_LIMIT_S = 12 * 3600
 SAVE_MARGIN_S = 30 * 60         # left over at the end for Kaggle to save the output
