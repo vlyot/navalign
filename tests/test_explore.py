@@ -151,6 +151,18 @@ def test_failed_edit_still_counts_as_edit():
     assert not event.ok and event.edited_files == {"fastapi/sse.py"}
 
 
+
+@pytest.mark.parametrize("c", [
+    call(0, "edit_file", {"filepath": "fastapi/sse.py", "old_string": "x", "new_string": "y"}),
+    run(0, "sed -i 's/x/y/' fastapi/sse.py > fastapi/out.py"),
+])
+def test_call_refused_by_the_budget_edits_nothing(c):
+    refused = ToolCall(c.index, c.step_id, c.name, c.arguments, json.dumps(
+        {"status": "error", "error_type": "BudgetExceeded", "error_message": "Tool call budget exhausted (10 calls)"}))
+    assert classify_call(c).edited_files
+    assert classify_call(refused).edited_files == set()
+
+
 SNAPSHOT_FILES = {"fastapi/sse.py", "tests/test_sse.py"}
 
 

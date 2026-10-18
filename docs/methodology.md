@@ -58,6 +58,9 @@ pydantic-v1 `Config` classes). Library functions are fully located.
 | seen | files in `grep`/`rg` output (or the one file searched), `find` and `ls` output; nodes in `search_similar_code` / `get_code_neighbors` / `get_code_subgraph` results |
 | edit | `edit_file`, `write_file`, `sed -i`, `>` / `>>` redirects, whether or not they succeeded |
 
+A call the harness refused because the tool-call budget was spent (`BudgetExceeded`) never ran, so
+it gives no event: an agent that only tries to edit after its budget is gone never edited.
+
 Paths are made repo-relative (`/workspace/`, sandbox `/tmp/.../workspace/` and `./` are
 stripped; paths outside the repo are dropped). The **exploration window** is every call before the
 first edit of a file that exists in the snapshot or is a target file, so a repro script written

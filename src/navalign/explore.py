@@ -6,6 +6,9 @@
 - *seen*: files in grep/rg/find/ls output, and nodes returned by the graph tools.
 - *edit*: `edit_file`, `write_file`, `sed -i` and shell redirects, whether or not they succeeded.
 
+A call the harness refused because the call budget was spent never ran, so it reads, sees and edits
+nothing.
+
 The exploration window is every call before the first edit of a file that exists in the
 snapshot or is a target file. Scratch scripts the agent writes first don't end it.
 """
@@ -24,7 +27,7 @@ from pathlib import Path
 import pandas as pd
 
 from .data import load_jsonl
-from .runs import load_runs
+from .runs import BUDGET_EXCEEDED, load_runs
 from .trace import ToolCall, Trace
 
 SANDBOX_PREFIX = re.compile(r"^(?:.*?/)?workspace/")
@@ -279,6 +282,8 @@ def classify_call(call: ToolCall) -> CallEvent:
     obs = observation(call)
     ok = obs.get("status") == "ok"
     event = CallEvent(call.index, call.name, ok, author=call.author)
+    if obs.get("error_type") == BUDGET_EXCEEDED:
+        return event
     if call.name == "read_file":
         path = normalize_path(obs.get("filepath") or call.arguments.get("filepath"))
         if ok and path:
