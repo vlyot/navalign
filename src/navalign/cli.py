@@ -22,6 +22,7 @@ COMMANDS = {
     "grade": ("grade", "main", "summarise a gold-patch control or an agent regrade"),
     "validity": ("validity", "main", "oracle and random baselines, hand-label agreement"),
     "analysis": ("analysis", "main", "outcomes, result tables and figures for a scored run"),
+    "compare": ("compare", "main", "compare two analysed runs of the same tasks"),
 }
 
 

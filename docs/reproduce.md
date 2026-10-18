@@ -171,6 +171,25 @@ The score is never used to predict A vs the rest (A is its own file-level test).
 length as a reference and repeats the scores over an equal span (`outcomes.csv` columns
 `s_file_prefix`, `focus_prefix`, `s_node_prefix`).
 
+## 8. Run 2 and the comparison
+
+Run 2 is run 1's setup with `max_tool_calls` 10 instead of 50 (cell A: `RUN_ID = "run2"`, one
+shard), regraded with `VARIANT = "agent"` and `RESULTS_DATASET, N_RUN_SHARDS =
+"navalign-run2-results", 1` in D1. Sections 3 to 7 then run on `results/traces/run2` with
+`--grades results/gold/run2-agent` and `--out results/analysis/run2`, and
+
+```
+navalign compare --a results/analysis/run1 --a-run results/traces/run1/shard0 \
+    --a-run results/traces/run1/shard1 --a-run results/traces/run1/shard2 \
+    --b results/analysis/run2 --b-run results/traces/run2 --out results/analysis/compare
+```
+
+| File | Contents |
+|---|---|
+| `compare.csv` | per run: call budget, resolved, passes (all and on gradable tasks whose tests ran), non-empty patches, call counts, categories, runs at the budget, mean scores, the S_file and −k_node AUCs of T4 |
+| `paired.csv` | per-task agreement: S_file rank correlation, same k, found in both or one run, same first call, shared leading calls |
+| `transitions.csv` | each task's category in run 1 against run 2 |
+
 ## Repository layout
 
 | Path | Contents |

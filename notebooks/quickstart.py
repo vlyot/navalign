@@ -1,6 +1,6 @@
 # Source of the public Kaggle notebook kaic87/navalign-quickstart (CPU, no Internet). Inputs: the
-# gemma-4-developer-agent competition data and the kaic87/navalign-src, kaic87/navalign-groundtruth
-# and kaic87/navalign-run1-traces Datasets. Each `# %%` block is one cell.
+# gemma-4-developer-agent competition data and the kaic87/navalign-src, kaic87/navalign-groundtruth,
+# kaic87/navalign-run1-traces and kaic87/navalign-run2-traces Datasets. Each `# %%` block is one cell.
 
 # %% [markdown]
 # # navalign quickstart
@@ -13,11 +13,12 @@
 # 1. scores one trace of the competition's baseline agent,
 # 2. gets the same score straight from the raw competition data,
 # 3. rebuilds the failure breakdown and the figures for all 129 tasks (run 1),
-# 4. scores your own agent's traces.
+# 4. compares run 1 with run 2, the same agent on a 10-call budget,
+# 5. scores your own agent's traces.
 #
 # Inputs: `navalign-src` (the toolkit), `navalign-groundtruth` (ground truth for the 129 tasks and
-# which tasks can be graded), `navalign-run1-traces` (the baseline agent's traces and grades), and
-# the competition data for part 2.
+# which tasks can be graded), `navalign-run1-traces` and `navalign-run2-traces` (the baseline
+# agent's traces and grades), and the competition data for part 2.
 
 # %%
 import subprocess
@@ -84,7 +85,12 @@ navalign("score-trace", next(RUN1.rglob("trace_requests_7427.json")), "--data", 
 # only on the tasks whose reference fix passes there (`gradable_tasks.csv`).
 
 # %%
-runs = [arg for shard in sorted(p.parent for p in RUN1.rglob("manifest.json")) for arg in ("--run", shard)]
+def run_args(root, flag="--run"):
+    """`--run <shard>` for every shard of a run Dataset."""
+    return [arg for shard in sorted(p.parent for p in root.rglob("manifest.json")) for arg in (flag, shard)]
+
+
+runs = run_args(RUN1)
 navalign("validity", "baselines", *runs, "--groundtruth", GROUNDTRUTH, "--out", OUT / "run1")
 navalign("score", *runs, "--groundtruth", GROUNDTRUTH, "--out", OUT / "run1" / "scores.csv",
          "--steps", OUT / "run1" / "steps.jsonl")
@@ -103,7 +109,23 @@ for figure in sorted((OUT / "run1" / "figures").glob("*.png")):
     display(Image(filename=str(figure)))
 
 # %% [markdown]
-# ## 4. Score your own agent
+# ## 4. Run 2: the same agent with a 10-call budget
+#
+# Run 2 repeats run 1 with the harness's default budget of 10 tool calls instead of 50.
+# `compare` sets the two runs side by side: outcomes, scores and AUCs per run, then per-task
+# agreement (how close each task's first-read score is across the runs, and how many calls the two
+# traces share from the start) and how each task's category moved.
+
+# %%
+RUN2 = next((p.parent for p in INPUT.rglob("navalign_run2.md")), None)
+if RUN2:
+    navalign("analysis", *run_args(RUN2), "--groundtruth", GROUNDTRUTH, "--grades", next(RUN2.rglob("grades.jsonl")).parent,
+             "--gradable", GROUNDTRUTH / "gradable_tasks.csv", "--out", OUT / "run2")
+    navalign("compare", "--a", OUT / "run1", *run_args(RUN1, "--a-run"), "--b", OUT / "run2", *run_args(RUN2, "--b-run"),
+             "--out", OUT / "compare")
+
+# %% [markdown]
+# ## 5. Score your own agent
 #
 # Attach the output of your own harness run as an input: any folder with `trace_<instance_id>.json`
 # files, such as the harness's `results/traces/`. Set `MY_TRACES` to it and run the cell.

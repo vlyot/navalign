@@ -94,6 +94,7 @@ and failed (split by whether an escaping bug in the tools caused it), or passed.
 | `navalign grade` | summarise a gold-patch control or an agent regrade |
 | `navalign validity` | oracle and random baselines, hand-label agreement |
 | `navalign analysis` | outcomes, result tables and figures for a scored run |
+| `navalign compare` | compare two analysed runs of the same tasks |
 
 `navalign <command> --help` lists a command's options; `python -m navalign` works too.
 
