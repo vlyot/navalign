@@ -272,7 +272,7 @@ def trace_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--demo", action="store_true", help="score the bundled toy example")
     parser.add_argument("--task", help="instance_id (default: from the trace file name)")
     source = parser.add_mutually_exclusive_group()
-    source.add_argument("--groundtruth", help="prebuilt ground truth: `navalign build` output or the navalign-groundtruth Dataset")
+    source.add_argument("--groundtruth", help="prebuilt ground truth (`navalign build` output)")
     source.add_argument("--data", help="dir with tasks.jsonl, graphs/ and snapshots/, to build the ground truth on the fly")
     parser.add_argument("--tasks", help="tasks.jsonl (default: <data>/tasks.jsonl)")
     parser.add_argument("--graphs", help="graph dir (default: <data>/graphs)")

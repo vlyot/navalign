@@ -1,6 +1,6 @@
 # Source of the public Kaggle notebook kaic87/navalign-quickstart (CPU, no Internet). Inputs: the
-# gemma-4-developer-agent competition data and the kaic87/navalign-src, kaic87/navalign-groundtruth,
-# kaic87/navalign-run1-traces and kaic87/navalign-run2-traces Datasets. Each `# %%` block is one cell.
+# gemma-4-developer-agent competition data and the kaic87/navalign-src and kaic87/navalign-results
+# Datasets. Each `# %%` block is one cell.
 
 # %% [markdown]
 # # navalign quickstart
@@ -10,15 +10,16 @@
 # the bug" from "found it, fixed it wrong". Code and docs: https://github.com/vlyot/navalign
 #
 # This notebook
-# 1. scores one trace of the competition's baseline agent,
-# 2. gets the same score straight from the raw competition data,
-# 3. rebuilds the failure breakdown and the figures for all 129 tasks (run 1),
-# 4. compares run 1 with run 2, the same agent on a 10-call budget,
-# 5. scores your own agent's traces.
+# 1. scores a made-up example trace,
+# 2. rebuilds the fix maps for all 129 tasks from the competition data,
+# 3. shows the validated grading set,
+# 4. shows where each run of the baseline agent ended up (run 1, 50 calls),
+# 5. compares it with run 2 (10 calls) and with SWE-agent on SWE-bench Verified,
+# 6. scores your own agent's traces.
 #
-# Inputs: `navalign-src` (the toolkit), `navalign-groundtruth` (ground truth for the 129 tasks and
-# which tasks can be graded), `navalign-run1-traces` and `navalign-run2-traces` (the baseline
-# agent's traces and grades), and the competition data for part 2.
+# The fix maps are derived from the competition data, which may not be redistributed (rule 2.4.b),
+# so they are built here, in `/tmp`, and are not part of this notebook's output. `navalign-results`
+# holds only computed tables.
 
 # %%
 import subprocess
@@ -31,9 +32,8 @@ from IPython.display import Image, display
 INPUT = Path("/kaggle/input")
 COMPETITION = INPUT / "competitions" / "gemma-4-developer-agent"
 SRC = next(INPUT.rglob("navalign/cli.py")).parents[1]
-GROUNDTRUTH = next(INPUT.rglob("navalign_groundtruth.md")).parent
-RUN1 = next(INPUT.rglob("navalign_run1.md")).parent
-GRADES = next(RUN1.rglob("grades.jsonl")).parent
+RESULTS = next(INPUT.rglob("navalign_results.md")).parent
+GROUNDTRUTH = Path("/tmp/groundtruth")  # derived from the competition data: kept out of /kaggle/working
 OUT = Path("/kaggle/working")
 
 sys.path.insert(0, str(SRC))
@@ -45,6 +45,10 @@ except ImportError:  # notebooks attached to a competition have no Internet: use
                    check=True)
 
 from navalign import cli
+from navalign.analysis import groundtruth_table
+from navalign.data import load_jsonl
+from navalign.figures import draw_all
+from navalign.score import load_groundtruth
 
 
 def navalign(*args):
@@ -55,77 +59,78 @@ def navalign(*args):
 
 
 # %% [markdown]
-# ## 1. Score one trace
+# ## 1. Score a trace
 #
-# `requests_7427`: requests ignored `no_proxy` for some URLs; the fix is in
-# `requests.utils.should_bypass_proxies`. The scores cover the exploration window, every call
+# A made-up shop whose discount codes charge the discount instead of taking it off; the fix is in
+# `apply_discount` in `toyshop/pricing.py`. The scores cover the exploration window, every call
 # before the agent's first edit of a repository file. `--steps` adds a row per call: the files it
 # read, whether one was a fixed file, whether the lines it read showed fixed code, and `d`, the
 # call-graph distance from what it read to the fixed code.
 
 # %%
-navalign("score-trace", next(RUN1.rglob("trace_requests_7427.json")), "--groundtruth", GROUNDTRUTH, "--steps")
+navalign("score-trace", "--demo", "--steps")
 
 # %% [markdown]
-# ## 2. The same score from the raw competition data
+# ## 2. The fix maps, from the competition data
 #
-# With `--data`, navalign builds the task's ground truth on the fly from `tasks.jsonl`, the code
-# graph and the repository snapshot, instead of reading the prebuilt `navalign-groundtruth`.
+# For each task, `build` maps every changed line of the reference patch to the innermost graph
+# function containing it, locates every graph node in the snapshot, and measures each node's
+# call-graph distance to the fix. About 8 minutes on CPU. The table is checked against the one the
+# paper reports.
 
 # %%
-navalign("score-trace", next(RUN1.rglob("trace_requests_7427.json")), "--data", COMPETITION)
+navalign("build", "--data", COMPETITION, "--out", GROUNDTRUTH)
+gradable = pd.read_csv(RESULTS / "gradable_tasks.csv")
+t1 = groundtruth_table(load_jsonl(GROUNDTRUTH / "targets.jsonl"), load_groundtruth(GROUNDTRUTH),
+                       set(gradable.loc[gradable["gradable"], "instance_id"]))
+t1.to_csv("/tmp/t1_groundtruth.csv", index=False)
+published = pd.read_csv(RESULTS / "run1" / "t1_groundtruth.csv")
+pd.testing.assert_frame_equal(pd.read_csv("/tmp/t1_groundtruth.csv"), published)
+print("fix maps match the published ground-truth table")
+display(published)
 
 # %% [markdown]
-# ## 3. Run 1: where every run ended up
+# ## 3. The validated grading set
 #
-# The baseline agent on all 129 tasks, one run each. `validity baselines` scores an oracle and a
-# random explorer against the same ground truth (the random draws feed figure F2), `score` writes
-# the per-step distances (F4), and `analysis` puts each run in an outcome category and draws the
-# figures. PASS/FAIL comes from regrading each agent patch in a repaired test environment, and
-# only on the tasks whose reference fix passes there (`gradable_tasks.csv`).
+# As shipped, the harness passes the reference fix and fails an empty patch on only 71 of the 129
+# tasks. In the repaired environment 111 are gradable; `reason` says why each other task is not.
 
 # %%
-def run_args(root, flag="--run"):
-    """`--run <shard>` for every shard of a run Dataset."""
-    return [arg for shard in sorted(p.parent for p in root.rglob("manifest.json")) for arg in (flag, shard)]
-
-
-runs = run_args(RUN1)
-navalign("validity", "baselines", *runs, "--groundtruth", GROUNDTRUTH, "--out", OUT / "run1")
-navalign("score", *runs, "--groundtruth", GROUNDTRUTH, "--out", OUT / "run1" / "scores.csv",
-         "--steps", OUT / "run1" / "steps.jsonl")
-navalign("analysis", *runs, "--groundtruth", GROUNDTRUTH, "--grades", GRADES,
-         "--gradable", GROUNDTRUTH / "gradable_tasks.csv", "--out", OUT / "run1", "--figures")
+display(gradable["reason"].value_counts().rename("tasks").to_frame())
+display(gradable.loc[~gradable["gradable"], ["instance_id", "reason"]])
 
 # %% [markdown]
-# **The failure breakdown (T2).** A: never read a file the fix changed. B: read one, never edited
-# one. C1/C2: edited one and failed, C1 when an escaping bug in the harness's tools broke an edit.
-# D: edited one and passed. CD_ng: edited one on a task that can't be graded. X: ended by the
-# context limit.
+# ## 4. Run 1: where every run ended up
+#
+# The baseline agent on all 129 tasks with 50 tool calls. A: never read a file the fix changed. B:
+# read one, never edited one. C1/C2: edited one and failed, C1 when an escaping bug in the harness's
+# tools broke an edit. D: edited one and passed. CD_ng: edited one on a task that can't be graded.
+# X: ended by the context limit. The figures are drawn from the published per-run outcomes.
 
 # %%
-display(pd.read_csv(OUT / "run1" / "t2_breakdown.csv"))
-for figure in sorted((OUT / "run1" / "figures").glob("*.png")):
+run1 = OUT / "run1"
+run1.mkdir(exist_ok=True)
+(run1 / "random_k.csv").write_bytes((RESULTS / "run1" / "random_k.csv").read_bytes())
+outcomes = pd.read_csv(RESULTS / "run1" / "outcomes.csv")
+display(pd.read_csv(RESULTS / "run1" / "t2_breakdown.csv"))
+display(pd.read_csv(RESULTS / "run1" / "validity.csv"))
+for figure in draw_all(run1, outcomes):
     display(Image(filename=str(figure)))
 
 # %% [markdown]
-# ## 4. Run 2: the same agent with a 10-call budget
+# ## 5. Run 2, and outside the competition
 #
-# Run 2 repeats run 1 with the harness's default budget of 10 tool calls instead of 50.
-# `compare` sets the two runs side by side: outcomes, scores and AUCs per run, then per-task
-# agreement (how close each task's first-read score is across the runs, and how many calls the two
-# traces share from the start) and how each task's category moved.
+# Run 2 repeats run 1 with the harness's default budget of 10 tool calls. `compare.csv` sets the
+# two runs side by side and `transitions.csv` shows how each task's category moved. `swebench/` is
+# SWE-agent with SWE-agent-LM-32B on 60 SWE-bench Verified tasks, scored the same way.
 
 # %%
-RUN2 = next((p.parent for p in INPUT.rglob("navalign_run2.md")), None)
-if RUN2:
-    navalign("analysis", *run_args(RUN2), "--groundtruth", GROUNDTRUTH, "--grades", next(RUN2.rglob("grades.jsonl")).parent,
-             "--gradable", GROUNDTRUTH / "gradable_tasks.csv", "--out", OUT / "run2")
-    navalign("compare", "--a", OUT / "run1", *run_args(RUN1, "--a-run"), "--b", OUT / "run2", *run_args(RUN2, "--b-run"),
-             "--out", OUT / "compare")
+display(pd.read_csv(RESULTS / "compare" / "compare.csv"))
+display(pd.read_csv(RESULTS / "compare" / "transitions.csv"))
+display(pd.read_csv(RESULTS / "swebench" / "t2_breakdown.csv"))
 
 # %% [markdown]
-# ## 5. Score your own agent
+# ## 6. Score your own agent
 #
 # Attach the output of your own harness run as an input: any folder with `trace_<instance_id>.json`
 # files, such as the harness's `results/traces/`. Set `MY_TRACES` to it and run the cell.
