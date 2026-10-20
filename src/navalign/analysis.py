@@ -73,6 +73,20 @@ def permutation_p(scores: np.ndarray, labels: np.ndarray, n_perm: int = 5000, se
     return (hits + 1) / (n_perm + 1)
 
 
+def holm(p: np.ndarray) -> np.ndarray:
+    """Holm-Bonferroni adjusted p-values for one family of tests (NaN p-values stay NaN and don't count)."""
+    p = np.asarray(p, dtype=float)
+    adjusted = np.full_like(p, np.nan)
+    keep = np.flatnonzero(~np.isnan(p))
+    order = keep[np.argsort(p[keep], kind="stable")]
+    m = len(order)
+    running = 0.0
+    for i, idx in enumerate(order):
+        running = max(running, min(1.0, (m - i) * p[idx]))
+        adjusted[idx] = running
+    return adjusted
+
+
 def _repo_summary(g: pd.DataFrame) -> pd.Series:
     return pd.Series({
         "tasks": len(g),
@@ -130,7 +144,11 @@ def _predictors(t: pd.DataFrame, prefix: int) -> dict[str, pd.Series]:
 
 def predictive_table(outcomes: pd.DataFrame, prefix: int = PREFIX, n_boot: int = 2000, n_perm: int = 5000,
                      seed: int = 0) -> pd.DataFrame:
-    """T4: AUC of each navigation measure for each outcome, on the populations where it isn't circular."""
+    """T4: AUC of each navigation measure for each outcome, on the populations where it isn't circular.
+
+    `p_holm` adjusts the permutation p-values over every test in the table except window length, which is a
+    reference, not a navigation measure.
+    """
     found = outcomes[~outcomes["category"].isin(FOUND_EXCLUDED)]
     with_nodes = found[found["cap"].notna()]
     graded = outcomes[outcomes["category"].isin(GRADED_EDITS)]
@@ -149,7 +167,11 @@ def predictive_table(outcomes: pd.DataFrame, prefix: int = PREFIX, n_boot: int =
             rows.append({"outcome": outcome, "population": population, "predictor": name, "n": len(xs),
                          "n_positive": int(ys.sum()), "auc": auc(xs, ys), "ci_low": lo, "ci_high": hi,
                          "p": permutation_p(xs, ys, n_perm, seed)})
-    return pd.DataFrame(rows)
+    table = pd.DataFrame(rows)
+    tested = table["predictor"] != "window_end"
+    table["p_holm"] = np.nan
+    table.loc[tested, "p_holm"] = holm(table.loc[tested, "p"].to_numpy())
+    return table
 
 
 def main(argv: list[str] | None = None) -> int:

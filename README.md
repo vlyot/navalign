@@ -37,17 +37,19 @@ for a row per call.
 
 ## Score your own agent
 
-**Gemma 4 Developer Agent competitors:** the ground truth for all 129 tasks is the Kaggle Dataset
-[navalign-groundtruth](https://www.kaggle.com/datasets/kaic87/navalign-groundtruth). Point
-navalign at the folder your harness run wrote its traces to:
+**Gemma 4 Developer Agent competitors:** build the ground truth for all 129 tasks from the
+competition data (about 8 minutes on a Kaggle CPU), then point navalign at the folder your harness
+run wrote its traces to:
 
 ```
-navalign score --run results --groundtruth navalign-groundtruth --out scores.csv
-navalign score-trace results/traces/trace_fastapi_14303.json --groundtruth navalign-groundtruth --steps
+navalign build --data /kaggle/input/competitions/gemma-4-developer-agent --out /tmp/groundtruth
+navalign score --run results --groundtruth /tmp/groundtruth --out scores.csv
+navalign score-trace results/traces/trace_fastapi_14303.json --groundtruth /tmp/groundtruth --steps
 ```
 
-Notebooks attached to the competition have no Internet, so on Kaggle attach the `navalign-src` and
-`navalign-groundtruth` Datasets instead of installing; the
+The ground truth is derived from the competition data, which may not be redistributed, so it is
+not published; keep it out of a public notebook's output. Notebooks attached to the competition
+have no Internet, so on Kaggle attach the `navalign-src` Dataset instead of installing; the
 [quickstart notebook](https://www.kaggle.com/code/kaic87/navalign-quickstart) shows how.
 
 ## Use it on another benchmark
@@ -61,8 +63,17 @@ navalign build --data mydata --out groundtruth
 navalign score --run mytraces --groundtruth groundtruth --out scores.csv
 ```
 
+No call graph? `navalign graph` builds one from the snapshots with Python's `ast`, in the same
+format. SWE-agent trajectories convert straight into a run:
+
+```
+navalign graph --tasks mydata/tasks.jsonl --snapshots mydata/snapshots --out mydata/graphs
+navalign swe-agent --trajs trajs --results results.json --out myrun
+```
+
 [docs/inputs.md](docs/inputs.md) has the formats, the graph's naming rules and which tool calls
-count as reads.
+count as reads; `notebooks/fetch_swebench.py` fetches 60 SWE-bench Verified tasks with SWE-agent's
+trajectories as a worked example.
 
 ## What the scores mean
 
@@ -87,12 +98,14 @@ and failed (split by whether an escaping bug in the tools caused it), or passed.
 | `navalign score-trace` | navigation scores for one trace (try `--demo`) |
 | `navalign score` | scores for every trace of a run, or of a folder of traces |
 | `navalign build` | ground truth (targets, spans, distances) from tasks, graphs and snapshots |
+| `navalign graph` | `ast` call graphs from snapshots, in the competition's graph format |
+| `navalign swe-agent` | convert SWE-agent trajectories into a run |
 | `navalign mapper` | map reference patches to target files and graph nodes |
 | `navalign explore` | explored set and exploration window for every trace of a run |
 | `navalign runs` | check and summarise a trace-collection run |
 | `navalign escaping` | label every failed `edit_file` (escaping, stale, no_match) |
 | `navalign grade` | summarise a gold-patch control or an agent regrade |
-| `navalign validity` | oracle and random baselines, hand-label agreement |
+| `navalign validity` | oracle, random, issue-mention and BM25 baselines; hand-label sheets and agreement |
 | `navalign analysis` | outcomes, result tables and figures for a scored run |
 | `navalign compare` | compare two analysed runs of the same tasks |
 
@@ -101,7 +114,8 @@ and failed (split by whether an escaping bug in the tools caused it), or passed.
 ## Reproduce the results
 
 The [quickstart notebook](https://www.kaggle.com/code/kaic87/navalign-quickstart) rebuilds the
-breakdown above and the paper's figures from the published Datasets on a Kaggle CPU.
+ground truth from the competition data, checks it against the published tables, and redraws the
+breakdown above and the paper's figures from the `navalign-results` Dataset on a Kaggle CPU.
 [docs/reproduce.md](docs/reproduce.md) is the full pipeline, from the competition data (not in
 this repository: the competition rules forbid redistributing it) to every table.
 

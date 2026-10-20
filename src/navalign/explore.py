@@ -9,6 +9,10 @@
 A call the harness refused because the call budget was spent never ran, so it reads, sees and edits
 nothing.
 
+SWE-agent traces (converted by `navalign.swe_agent`) use two tools: `bash`, parsed like
+`run_command`, and `str_replace_editor`, whose `view` is a read of the line numbers its `cat -n`
+output shows and whose `create`, `str_replace`, `insert` and `undo_edit` are edits.
+
 The exploration window is every call before the first edit of a file that exists in the
 snapshot or is a target file. Scratch scripts the agent writes first don't end it.
 """
@@ -30,7 +34,7 @@ from .data import load_jsonl
 from .runs import BUDGET_EXCEEDED, load_runs
 from .trace import ToolCall, Trace
 
-SANDBOX_PREFIX = re.compile(r"^(?:.*?/)?workspace/")
+SANDBOX_PREFIX = re.compile(r"^(?:.*?/)?(?:workspace|testbed)/")  # the harness's sandbox; SWE-bench's /testbed
 GRAPH_TOOLS = frozenset({"search_similar_code", "get_code_neighbors", "get_code_subgraph"})
 NODE_KEYS = ("node_name", "node_id", "node")
 HEREDOC = re.compile(r"(?<!<)<<-?(?!<)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
@@ -39,6 +43,10 @@ REDIRECTS = frozenset({">", ">>", ">|"})
 GREP_COMMANDS = frozenset({"grep", "egrep", "fgrep", "rg"})
 GREP_VALUE_OPTIONS = frozenset({"-e", "-f", "-m", "-A", "-B", "-C", "--include", "--exclude", "-g", "-t"})
 SED_PRINT = re.compile(r"(\d+)(?:,(\d+))?p")
+EDITOR_EDITS = frozenset({"create", "str_replace", "insert", "undo_edit"})
+EDITOR_OK = ("File created successfully", "The file ", "Last edit to ")
+NUMBERED_LINE = re.compile(r"^[ ]*(\d+)(?:[\t ]|\r?$)", re.MULTILINE)  # a blank line's number has no tab
+DIRECTORY_VIEW = "Here's the files and directories"
 
 
 @dataclass(frozen=True)
@@ -94,12 +102,12 @@ def normalize_path(path: str | None) -> str | None:
     if not path:
         return None
     p = path.strip().strip("\"'").replace("\\", "/")
-    if p.startswith(("/", "workspace/")):
+    if p.startswith(("/", "workspace/", "testbed/")):
         p = SANDBOX_PREFIX.sub("", p, count=1)
         if p.startswith("/"):
             return None
     p = posixpath.normpath(p)
-    return None if p in (".", "..", "workspace") or p.startswith("../") else p
+    return None if p in (".", "..", "workspace", "testbed") or p.startswith("../") else p
 
 
 def observation(call: ToolCall) -> dict:
@@ -278,7 +286,40 @@ def _normalized(paths: set[str]) -> set[str]:
     return {p for p in map(normalize_path, paths) if p}
 
 
+def _line_runs(numbers: list[int]) -> list[tuple[int, int]]:
+    """Contiguous runs of line numbers, in order: [3, 4, 5, 9] → [(3, 5), (9, 9)]."""
+    runs: list[tuple[int, int]] = []
+    for n in numbers:
+        if runs and n == runs[-1][1] + 1:
+            runs[-1] = (runs[-1][0], n)
+        elif not runs or n > runs[-1][1]:
+            runs.append((n, n))
+    return runs
+
+
+def _classify_editor(call: ToolCall, event: CallEvent) -> CallEvent:
+    """SWE-agent's `str_replace_editor`: observations are plain text, not the harness's JSON."""
+    command, output = call.arguments.get("command"), call.output or ""
+    path = normalize_path(call.arguments.get("path"))
+    if command == "view" and path:
+        if output.startswith(DIRECTORY_VIEW):
+            event.ok = True
+            event.seen_files = _normalized({line.strip() for line in output.splitlines()[1:] if line.strip()})
+        elif runs := _line_runs([int(n) for n in NUMBERED_LINE.findall(output)]):
+            event.ok = True
+            event.reads = [ReadSpan(path, a, b) for a, b in runs]
+    elif command in EDITOR_EDITS and path:
+        event.ok = output.startswith(EDITOR_OK)
+        event.edited_files.add(path)
+    return event
+
+
 def classify_call(call: ToolCall) -> CallEvent:
+    if call.name == "str_replace_editor":
+        return _classify_editor(call, CallEvent(call.index, call.name, False, author=call.author))
+    if call.name == "bash":
+        reads, seen, edited = parse_command(call.arguments.get("command", ""), call.output or "")
+        return CallEvent(call.index, call.name, True, reads, seen, edited_files=edited, author=call.author)
     obs = observation(call)
     ok = obs.get("status") == "ok"
     event = CallEvent(call.index, call.name, ok, author=call.author)

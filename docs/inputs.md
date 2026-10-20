@@ -48,8 +48,17 @@ benchmark:
   kept and enclosing functions dropped (a function nested in `f` is named as if it were at `f`'s
   level). Module names drop a leading `src/` or `docs_src/`. Async functions may be left out; their
   lines then map to the enclosing node or to the file.
-- **Edges**: calls between nodes, plus class ↔ method. Direction is ignored, and only the `edges`
-  list matters (edge `type` and node `text` are not used).
+- **Edges**: calls between nodes, plus class ↔ method and class ↔ base class. Direction is
+  ignored, and every edge in the `edges` list counts (edge `type` is not used; node `text` is used
+  only by the BM25 baseline).
+
+`navalign graph --tasks tasks.jsonl --snapshots DIR --out DIR` builds such a graph per commit with
+Python's `ast`, async functions included. A call is resolved through the calling function's nested
+defs, the module's defs and imports (relative imports and re-exports followed), `self`/`cls`/`super()`
+methods through same-repo base classes, and finally a name defined only once in the repository;
+anything still ambiguous makes no edge. Edges are typed `calls`, `contains` (class → member) or
+`inherits` (class → base). On the Gemma 4 benchmark these graphs hold 97–99% of the shipped graphs'
+edges (80% for httpx), and 33–158% more edges in all.
 
 A node the snapshot doesn't define is reported as `unlocated` and never counts as read.
 
@@ -67,16 +76,27 @@ understands these tools:
 | `edit_file`, `write_file` | edits | argument `filepath` |
 | `search_similar_code`, `get_code_neighbors`, `get_code_subgraph` | seen nodes | node names in the results |
 
-Any other tool counts as a call (it moves k) but reads nothing. Traces from agent frameworks with
-other tool names (`str_replace_editor`, `bash`, ...) need their calls renamed to these before
-scoring.
+SWE-agent's two tools are understood too (paths under `/testbed/` are made repo-relative):
+
+| Tool | Read as | Fields used |
+|---|---|---|
+| `bash` | as `run_command` | argument `command`; the observation text as `stdout` |
+| `str_replace_editor` | `view`: a read of each run of line numbers its `cat -n` output shows (a directory view is seen files); `create`, `str_replace`, `insert`, `undo_edit`: edits | arguments `command`, `path`; the observation text |
+
+`navalign swe-agent --trajs DIR --results results.json --out RUN` converts SWE-agent `.traj` files
+(one action string per step) into ATIF traces plus `results.jsonl`, `grades.jsonl` (pass/fail from
+SWE-bench's `resolved` list) and `gradable_tasks.csv`, so `navalign score` and `navalign analysis`
+run on them unchanged. Instance ids are renamed `psf__requests-2931` → `requests_2931`.
+
+Any other tool counts as a call (it moves k) but reads nothing.
 
 `navalign score --run DIR` finds every `trace_<instance_id>.json` below `DIR`. If `DIR` has a
 `results.jsonl` (written by `navalign.collect` on Kaggle), only the tasks it lists are scored.
 
 ## Ground truth (`navalign build` output)
 
-These files are what the `navalign-groundtruth` Kaggle Dataset holds for the benchmark's 129 tasks.
+For the benchmark's 129 tasks they are derived from the competition data, so they are built where
+the data is (a notebook attached to the competition) and not published.
 
 | File | One JSON line / row per task |
 |---|---|

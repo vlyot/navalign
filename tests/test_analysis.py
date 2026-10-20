@@ -12,6 +12,7 @@ from navalign.analysis import (
     bootstrap_ci,
     breakdown_table,
     groundtruth_table,
+    holm,
     permutation_p,
     predictive_table,
 )
@@ -162,3 +163,21 @@ def test_figures_render_and_skip_missing_inputs(tmp_path, capsys):
     assert [p.name for p in written] == ["f1_breakdown.png", "f2_first_read.png", "f3_scores_by_outcome.png",
                                          "f4_trajectories.png"]
     assert all(p.stat().st_size > 10_000 for p in written)
+
+
+def test_holm_matches_a_worked_example():
+    # m = 4: sorted p 0.01, 0.02, 0.03, 0.5 -> 0.04, 0.06, 0.06 (monotone), 0.5
+    assert holm(np.array([0.03, 0.01, 0.5, 0.02])).round(3).tolist() == [0.06, 0.04, 0.5, 0.06]
+
+
+def test_holm_never_lowers_a_p_value_and_ignores_nan():
+    p = np.array([0.2, np.nan, 0.001, 0.9])
+    adjusted = holm(p)
+    assert np.isnan(adjusted[1]) and (adjusted[[0, 2, 3]] >= p[[0, 2, 3]]).all() and np.nanmax(adjusted) <= 1
+
+
+def test_predictive_table_adjusts_every_test_but_window_length():
+    t4 = predictive_table(_outcomes(), n_boot=50, n_perm=50)
+    assert t4.loc[t4["predictor"] == "window_end", "p_holm"].isna().all()
+    tested = t4[t4["predictor"] != "window_end"].dropna(subset=["p"])
+    assert (tested["p_holm"] >= tested["p"]).all()

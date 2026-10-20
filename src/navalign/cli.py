@@ -15,6 +15,8 @@ COMMANDS = {
     "score-trace": ("score", "trace_main", "navigation scores for one trace (try --demo)"),
     "score": ("score", "main", "scores for every trace of a run, or of a folder of traces"),
     "build": ("build", "main", "ground truth (targets, spans, distances) from tasks, graphs and snapshots"),
+    "graph": ("callgraph", "main", "ast call graphs from snapshots, in the competition's graph format"),
+    "swe-agent": ("swe_agent", "main", "convert SWE-agent trajectories into a run"),
     "mapper": ("mapper", "main", "map reference patches to target files and graph nodes"),
     "explore": ("explore", "main", "explored set and exploration window for every trace of a run"),
     "runs": ("runs", "main", "check and summarise a trace-collection run"),

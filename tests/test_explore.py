@@ -33,6 +33,8 @@ def run(index: int, command: str, stdout: str = "", status: str = "ok") -> ToolC
 @pytest.mark.parametrize("raw, expected", [
     ("/tmp/swegemma_sandbox_ab12/workspace/src/requests/utils.py", "src/requests/utils.py"),
     ("/workspace/fastapi/sse.py", "fastapi/sse.py"),
+    ("/testbed/requests/utils.py", "requests/utils.py"),
+    ("/testbed", None),
     ("./rich/cells.py", "rich/cells.py"),
     ("docs/workspace/notes.md", "docs/workspace/notes.md"),
     ("/usr/lib/python3/os.py", None),
@@ -251,3 +253,54 @@ def test_cli_summarises_a_run(tmp_path, capsys):
     assert ex["window_end"] == 2 and ex["created_files"] == ["repro.py"]
     row = csv.read_text(encoding="utf-8").splitlines()[1].split(",")
     assert row[:5] == ["fastapi_1", "3", "2", "1", "1"]
+
+
+def editor(index: int, command: str, path: str, output: str, **arguments) -> ToolCall:
+    return ToolCall(index=index, step_id=index + 1, name="str_replace_editor",
+                    arguments={"command": command, "path": path} | arguments, output=output)
+
+
+VIEW = "Here's the result of running `cat -n` on /testbed/requests/utils.py:\r\n   686\tdef f():\r\n   687\t    pass\r\n   688"
+
+
+def test_editor_view_reads_the_cat_n_line_numbers():
+    e = classify_call(editor(0, "view", "/testbed/requests/utils.py", VIEW, view_range=[686, 688]))
+    assert e.ok and [(r.file, r.start, r.end) for r in e.reads] == [("requests/utils.py", 686, 688)]
+
+
+def test_abbreviated_editor_view_reads_each_shown_run():
+    output = ("<NOTE>This file is too large to display entirely.</NOTE>\r\n     1 import os\r\n     2 \r\n"
+              "    40 def g():\r\n    41 ... eliding lines 41-90 ...")
+    e = classify_call(editor(0, "view", "/testbed/pkg/a.py", output))
+    assert [(r.start, r.end) for r in e.reads] == [(1, 2), (40, 41)]
+
+
+def test_editor_directory_view_is_only_seen():
+    output = ("Here's the files and directories up to 2 levels deep in /testbed/pkg, excluding hidden items:\n"
+              "/testbed/pkg\n/testbed/pkg/a.py\n")
+    e = classify_call(editor(0, "view", "/testbed/pkg", output))
+    assert e.ok and not e.reads and e.seen_files == {"pkg", "pkg/a.py"}
+
+
+@pytest.mark.parametrize("command, output, ok", [
+    ("str_replace", "The file /testbed/pkg/a.py has been edited. Here's the result of running `cat -n`", True),
+    ("str_replace", "No replacement was performed, old_str `x` did not appear verbatim in /testbed/pkg/a.py.", False),
+    ("create", "File created successfully at: /testbed/pkg/a.py", True),
+    ("insert", "The file /testbed/pkg/a.py has been edited.", True),
+    ("undo_edit", "Last edit to /testbed/pkg/a.py undone successfully.", True),
+])
+def test_editor_changes_are_edits_even_when_they_fail(command, output, ok):
+    e = classify_call(editor(0, command, "/testbed/pkg/a.py", output))
+    assert e.edited_files == {"pkg/a.py"} and e.ok is ok and not e.reads
+
+
+def test_editor_view_of_a_missing_path_is_not_ok():
+    e = classify_call(editor(0, "view", "/testbed/nope.py", "The path /testbed/nope.py does not exist."))
+    assert not e.ok and not e.reads
+
+
+def test_bash_is_parsed_like_run_command():
+    c = ToolCall(index=0, step_id=1, name="bash", arguments={"command": "cd /testbed && sed -n 10,20p requests/utils.py"},
+                 output="x\r\n")
+    e = classify_call(c)
+    assert e.ok and [(r.file, r.start, r.end) for r in e.reads] == [("requests/utils.py", 10, 20)]

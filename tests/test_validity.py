@@ -5,20 +5,24 @@ import pandas as pd
 import pytest
 from test_escaping import write_run
 from test_explore import call, run
-from test_score import ROWS, TASK, ground_truth, read
+from test_score import ROWS, SPANS, TASK, ground_truth, read
 
+from navalign.data import example_dir
 from navalign.explore import explore_trace
 from navalign.runs import load_run
 from navalign.score import GroundTruth, score_exploration
 from navalign.trace import Trace
 from navalign.validity import (
     baselines,
+    bm25_ranking,
     checkpoint_passes,
     cohen_kappa,
+    issue_mentions,
     label_sheet,
     main,
     oracle_exploration,
     random_exploration,
+    ranked_exploration,
     score_level,
     validity_summary,
 )
@@ -151,3 +155,74 @@ def test_cli_label_sheet_then_agreement(tmp_path, capsys):
     assert main(["agreement", *common, "--labels", str(labels_path), "--out", str(out)]) == 0
     assert "kappa 1.000" in capsys.readouterr().out
     assert pd.read_csv(out / "agreement.csv")["scorer"].tolist() == labels["label"].tolist()
+
+
+NAMED_SPANS = SPANS | {"spans": {"pkg/a.py": [["pkg.a.parse_header", 10, 20], ["pkg.a.g", 30, 40]],
+                                 "pkg/b.py": [["pkg.b.render", 1, 50]], "pkg/flat.py": [["pkg.flat.k", 5, 9]]}}
+
+
+def named_ground_truth() -> GroundTruth:
+    return GroundTruth.from_rows(ROWS["targets"], NAMED_SPANS, ROWS["distances"], ROWS["files"])
+
+
+def test_issue_mentions_follow_the_order_of_mention():
+    text = "render() fails when pkg/a.py handles headers via parse_header"
+    assert issue_mentions(text, named_ground_truth()) == [("pkg/b.py", 1), ("pkg/a.py", 1), ("pkg/a.py", 10)]
+
+
+def test_issue_mentions_resolve_module_paths_and_skip_short_names():
+    assert issue_mentions("see pkg.b and g", named_ground_truth()) == [("pkg/b.py", 1)]
+
+
+def test_issue_mentions_skip_names_defined_too_often():
+    spans = SPANS | {"spans": {f"pkg/m{i}.py": [[f"pkg.m{i}.render", 1, 5]] for i in range(4)}}
+    gt = GroundTruth.from_rows(ROWS["targets"], spans, ROWS["distances"], ROWS["files"])
+    assert issue_mentions("render is broken", gt) == []
+
+
+def test_bm25_ranks_the_node_sharing_issue_words_first():
+    texts = {"pkg.a.f": "def f(header):\n    return parse_token(header)", "pkg.a.g": "def g():\n    return 1",
+             "pkg.b.h": "def h(html):\n    return render(html)", "pkg.flat.k": "def k():\n    pass"}
+    ranking = bm25_ranking("Header parsing breaks on a token", texts, ground_truth())
+    assert ranking[0] == ("pkg/a.py", 10) and ("pkg/a.py", 30) not in ranking
+
+
+def test_ranked_exploration_reads_the_ranking_in_order_then_nothing():
+    gt = ground_truth()
+    ex = explore(CALLS, gt)
+    ranked = ranked_exploration(ex, gt, [("pkg/a.py", 10)])
+    assert ranked.window_end == ex.window_end == 5
+    assert [[(r.file, r.start, r.end) for r in e.reads] for e in ranked.events] == [[], [("pkg/a.py", 10, 159)], [], [], []]
+    s = score_exploration(ranked, gt)
+    assert (s.k, s.s_file, s.focus) == (2, 0.5, 1.0)
+
+
+def test_baselines_with_rankings_add_issue_and_bm25_columns():
+    gt = ground_truth()
+    rankings = {TASK: {"issue": [["pkg/b.py", 1]], "bm25": [["pkg/a.py", 10], ["pkg/b.py", 1]]}}
+    per_task, _ = baselines({TASK: explore(CALLS, gt)}, {TASK: gt}, draws=5, rankings=rankings)
+    row = per_task.iloc[0]
+    assert (row["issue_s_file"], row["bm25_s_file"], row["bm25_s_node"]) == (0.0, 0.5, pytest.approx(1 - 1 / 5))
+    summary = validity_summary(per_task)
+    assert {"issue_mean", "real_minus_bm25", "bm25_ci_low"} <= set(summary.columns)
+
+
+def test_random_label_sheet_skips_excluded_tasks(tmp_path):
+    run_dir, _ = _level_run(tmp_path)
+    gts = {tid: GroundTruth.from_rows(*(row | {"instance_id": tid} for row in ROWS.values())) for tid in LEVEL_TRACES}
+    explorations = {tid: explore(calls, gts[tid], tid) for tid, calls in LEVEL_TRACES.items()}
+    _, labels = label_sheet(load_run(run_dir), explorations, gts, n=3, sample="random", exclude=frozenset({"pkg_0"}))
+    assert sorted(labels["instance_id"]) == ["pkg_1", "pkg_2"]
+
+
+def test_cli_rankings_on_the_toy_example(tmp_path):
+    from navalign.build import main as build_main
+
+    toy = example_dir()
+    assert build_main(["--data", str(toy), "--out", str(tmp_path / "gt")]) == 0
+    out = tmp_path / "rankings.jsonl"
+    assert main(["rankings", "--tasks", str(toy / "tasks.jsonl"), "--graphs", str(toy / "graphs"),
+                 "--groundtruth", str(tmp_path / "gt"), "--out", str(out)]) == 0
+    (row,) = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+    assert row["issue"] == [["toyshop/cart.py", 14]]  # "Cart.total(...)" names the method
+    assert row["bm25"][0] == ["toyshop/cart.py", 14] and ["toyshop/pricing.py", 10] in row["bm25"]

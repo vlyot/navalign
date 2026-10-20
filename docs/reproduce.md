@@ -1,9 +1,15 @@
 # Reproducing the run-1 results
 
 The fastest route is the Kaggle notebook
-[navalign quickstart](https://www.kaggle.com/code/kaic87/navalign-quickstart): it attaches the
-published ground truth and run-1 traces and rebuilds the failure breakdown (T2) and figures F1–F4
-in a few minutes on CPU. This page is the full pipeline, from the competition data to every table.
+[navalign quickstart](https://www.kaggle.com/code/kaic87/navalign-quickstart): it rebuilds the
+ground truth from the competition data (in `/tmp`, outside its public output), checks it against the
+published ground-truth table, and redraws the failure breakdown (T2) and figures F1–F3 from the
+`navalign-results` Dataset. This page is the full pipeline, from the competition data to every table.
+
+Nothing derived from the competition data is published: not the ground truth, the traces (their
+tool outputs quote the snapshots' code) or the grade logs. `navalign-results` holds the computed
+tables and `gradable_tasks.csv`; `release/build_kaggle.py` (outside the public repository) lists
+every file.
 
 Competition rules (2.4.b) forbid redistributing the competition data, so `data/` is git-ignored;
 download it from the competition page.
@@ -136,8 +142,13 @@ navalign score --run results/traces/run1/shard0 --run results/traces/run1/shard1
 ## 6. Validity checks
 
 ```
-navalign validity baselines   --run ... --groundtruth results/groundtruth --out results/analysis/run1
+navalign validity rankings    --tasks data/tasks.jsonl --graphs data/graphs --groundtruth results/groundtruth \
+    --out results/groundtruth-ast-out/rankings.jsonl
+navalign validity baselines   --run ... --groundtruth results/groundtruth --out results/analysis/run1 \
+    --rankings results/groundtruth-ast-out/rankings.jsonl
 navalign validity label-sheet --run ... --groundtruth results/groundtruth --out results/analysis/run1 --n 10
+navalign validity label-sheet --run ... --groundtruth results/groundtruth --out results/analysis/run1/hand-random \
+    --n 25 --sample random --seed 1 --exclude results/analysis/run1/human_labels.csv
 navalign validity agreement   --run ... --groundtruth results/groundtruth \
     --labels results/analysis/run1/human_labels.csv --out results/analysis/run1
 ```
@@ -146,9 +157,16 @@ navalign validity agreement   --run ... --groundtruth results/groundtruth \
   and S_node; a random window (each read call pointed at a random Python file of the snapshot,
   150 lines from line 1 or a node's start, 200 draws) must score clearly below the real runs.
   Writes `baselines.csv` (per task), `validity.csv` (T3) and `random_k.csv`; exits 1 if the check
-  fails.
+  fails. With `--rankings` it adds two heuristic baselines with the same window: the i-th read
+  becomes 150 lines from the i-th entry of a fixed ranking, the files and functions the issue
+  names (in order of mention; names under 4 characters or defined more than 3 times skipped), or the
+  graph functions ranked by BM25 between the issue text and each function's source. `validity.csv`
+  gains `issue_*` and `bm25_*` columns with real − baseline bootstrap CIs.
+- `rankings`: those two rankings per task. BM25 needs the graphs' node text, so for the 129 tasks it
+  runs in the Kaggle notebook below.
 - `label-sheet`: `human_check.md` with 10 traces' raw window calls (stratified by the scorer's
   level, scores not shown) and a blank `human_labels.csv`. It never overwrites a labels file.
+  `--sample random` draws uniformly instead; `--exclude` skips tasks an earlier labels file has.
 - `agreement`: Cohen's kappa between the hand labels (0 no target file read, 1 target file only,
   2 a target node's lines read) and the scorer's level, and the rank correlation with S_node.
 
@@ -166,6 +184,9 @@ navalign analysis --run ... --groundtruth results/groundtruth --grades results/g
 | `t2_breakdown.csv` | runs per category and repo (the main result) |
 | `t4_predictive.csv` | AUC (bootstrap 95% CI, permutation p) of S_file, focus, S_node, k_node, the same three scores over each run's first `--prefix` calls (default 10; `s_file_first10`, ...), and window length, for: editing a target file among runs that found one; the patch touching a target node; passing among graded runs that edited one |
 | `figures/` | F1 breakdown, F2 first target read vs random (needs `random_k.csv`), F3 scores by outcome, F4 per-step distance for three runs (needs `steps.jsonl`) |
+
+`t4_predictive.csv` also has `p_holm`: the permutation p-values Holm-adjusted over every test in
+the table except window length (21 tests).
 
 The score is never used to predict A vs the rest (A is its own file-level test). T4 lists window
 length as a reference and repeats the scores over an equal span (`outcomes.csv` columns
@@ -190,13 +211,45 @@ navalign compare --a results/analysis/run1 --a-run results/traces/run1/shard0 \
 | `paired.csv` | per-task agreement: S_file rank correlation, same k, found in both or one run, same first call, shared leading calls |
 | `transitions.csv` | each task's category in run 1 against run 2 |
 
+## 9. The ast graph (closeness on a rebuilt graph)
+
+The Kaggle CPU notebook `kaic87/navalign-ground-truth-build` (version 4, source
+[`notebooks/ast_groundtruth.py`](../notebooks/ast_groundtruth.py); inputs: the competition data,
+`navalign-src`, the private `navalign-groundtruth`) builds an `ast` graph per commit, the ground truth on those
+graphs, the issue/BM25 rankings, and `graph_compare.csv` (per commit: nodes, edges, share of
+shipped edges the ast graph has, isolated nodes). The graphs stay in the notebook's `/tmp`.
+
+```
+kaggle kernels output kaic87/navalign-ground-truth-build -p results/groundtruth-ast-out
+navalign score --run ... --groundtruth results/groundtruth-ast-out/groundtruth-ast --out results/analysis/run1-ast/scores.csv
+navalign validity agreement --run ... --groundtruth results/groundtruth-ast-out/groundtruth-ast \
+    --labels results/analysis/run1/human_labels.csv --out results/analysis/run1-ast
+```
+
+## 10. Outside the competition: SWE-agent on SWE-bench Verified
+
+```
+python notebooks/fetch_swebench.py                     # 60 tasks: requests, flask, pytest, pylint, xarray
+E=data/external/swebench
+navalign graph --tasks $E/tasks.jsonl --snapshots $E/snapshots --out $E/graphs
+navalign build --data $E --out $E/groundtruth
+navalign swe-agent --trajs $E/trajs --results $E/results.json --out $E/run
+navalign analysis --run $E/run --groundtruth $E/groundtruth --grades $E/run --gradable $E/run/gradable_tasks.csv --out $E/analysis
+navalign validity rankings --tasks $E/tasks.jsonl --graphs $E/graphs --groundtruth $E/groundtruth --out $E/rankings.jsonl
+navalign validity baselines --run $E/run --groundtruth $E/groundtruth --rankings $E/rankings.jsonl --out $E/validity
+```
+
+The trajectories are the SWE-bench experiments submission `20250511_sweagent_lm_32b`
+(SWE-agent 1.0.1 with SWE-agent-LM-32B), from the public `swe-bench-submissions` S3 bucket;
+pass/fail is that submission's `results.json`. The graphs are `ast` graphs, since SWE-bench ships none.
+
 ## Repository layout
 
 | Path | Contents |
 |---|---|
-| `src/navalign/` | the package: `data` (loaders), `patch`, `symbols`, `mapper`, `distance`, `spans`, `build`, `trace`, `collect`, `runs`, `explore`, `escaping`, `grade`, `score`, `outcomes`, `validity`, `analysis`, `figures`, `cli` |
+| `src/navalign/` | the package: `data` (loaders), `patch`, `symbols`, `mapper`, `distance`, `spans`, `build`, `trace`, `collect`, `runs`, `explore`, `escaping`, `grade`, `score`, `outcomes`, `validity`, `analysis`, `figures`, `compare`, `callgraph`, `swe_agent`, `cli` |
 | `src/navalign/examples/toy/` | the bundled toy example (`navalign score-trace --demo`) |
 | `tests/` | tests; the ones that need the competition data or run 1 skip when those are absent |
 | `fixtures/trace_step_example.json` | one real ATIF-v1.7 step, for the trace parser's tests |
-| `notebooks/` | Kaggle cells: `collect_traces.py` (GPU, trace collection), `gold_control.py` (CPU, gold-patch control and regrading), `quickstart.py` (the public notebook); `build_repair_wheels.sh` (the offline repair wheels) |
+| `notebooks/` | Kaggle cells: `collect_traces.py` (GPU, trace collection), `gold_control.py` (CPU, gold-patch control and regrading), `quickstart.py` (the public notebook), `ast_groundtruth.py` (CPU, ast graphs and baseline rankings); `fetch_swebench.py` (the external SWE-bench set); `build_repair_wheels.sh` (the offline repair wheels) |
 | `docs/` | this page, [methodology.md](methodology.md), [inputs.md](inputs.md) |

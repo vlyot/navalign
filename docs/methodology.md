@@ -61,8 +61,11 @@ pydantic-v1 `Config` classes). Library functions are fully located.
 A call the harness refused because the tool-call budget was spent (`BudgetExceeded`) never ran, so
 it gives no event: an agent that only tries to edit after its budget is gone never edited.
 
-Paths are made repo-relative (`/workspace/`, sandbox `/tmp/.../workspace/` and `./` are
-stripped; paths outside the repo are dropped). The **exploration window** is every call before the
+SWE-agent traces use `bash` (parsed as a shell command) and `str_replace_editor`: `view` reads the
+line numbers its `cat -n` output shows; `create`, `str_replace`, `insert` and `undo_edit` are edits.
+
+Paths are made repo-relative (`/workspace/`, sandbox `/tmp/.../workspace/`, SWE-bench's `/testbed/`
+and `./` are stripped; paths outside the repo are dropped). The **exploration window** is every call before the
 first edit of a file that exists in the snapshot or is a target file, so a repro script written
 first doesn't end it. `created_files` lists written paths absent from the snapshot; for new-file
 targets it shows whether the agent created the target.
